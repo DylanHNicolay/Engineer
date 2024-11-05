@@ -10,17 +10,6 @@ services:
     env_file:
       - .env
 
-  pgadmin:
-    image: dpage/pgadmin4
-    environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL} # Admin email for pgAdmin login
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD} # Admin password for pgAdmin login
-    ports:
-      - "5050:80" # Port mapping (5050 on host to 80 in pgAdmin container)
-    depends_on:
-      - database
-    restart: unless-stopped
-
   EngineerAPI:
     build: .
     image: engineerapi
@@ -28,5 +17,5 @@ services:
       - .env
     depends_on:
       - database
-      - pgadmin
     restart: unless-stopped
+
