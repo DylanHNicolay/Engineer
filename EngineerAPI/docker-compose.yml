@@ -10,6 +10,17 @@ services:
     env_file:
       - .env
 
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+    ports:
+      - "8080:80"
+    depends_on:
+      - database
+    restart: unless-stopped
+
   EngineerAPI:
     build: .
     image: engineerapi
@@ -18,4 +29,3 @@ services:
     depends_on:
       - database
     restart: unless-stopped
-
