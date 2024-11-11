@@ -115,6 +115,9 @@ async def verify(ctx, rcsid: str = None):
 
                 await ctx.author.add_roles(student_role)
 
+                # Remove the verification code from the database
+                handle_verification_timeout(cursor, discord_id)
+
             else:
                 await ctx.author.send('The verification code is incorrect. Please request a new verification code using the !verify_student command.')
         except asyncio.TimeoutError:

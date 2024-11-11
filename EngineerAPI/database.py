@@ -64,3 +64,5 @@ def insert_user_data(cursor, conn, members):
         print("User data inserted successfully")
     except Exception as e:
         print(f"Error inserting user data into PostgreSQL DB: {e}")
+
+
