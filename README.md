@@ -13,7 +13,6 @@
 
 - **User Verification**: Authenticate users through their RCSID and assign appropriate roles.
 - **Role Management**: Automatically assign the "Student" role upon successful verification.
-- **Secure Authentication**: Generate and verify unique codes sent via email.
 - **Database Integration**: Store and manage user information securely.
 
 
