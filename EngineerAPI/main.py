@@ -61,7 +61,6 @@ async def init(ctx):
                 # DM the user for reverification
                 await member.send(
                     "Hello, please reverify your student status in the RPI Esports Discord Server.\n"
-                    "Click the verification button in the server channel to begin."
                     "https://discord.gg/8tzMdZxBh4"
                 )
 
@@ -77,14 +76,13 @@ async def init(ctx):
 
     await ctx.send(f"User data initialized successfully. Updated roles for {updated_members} member(s).")
 
-
 # Channel ID for the static verification message (set this to your desired channel ID)
 VERIFICATION_CHANNEL_ID = int(os.getenv("VERIFICATION_CHANNEL_ID"))
 
 # Verification Button Class
-class VerifyButton(discord.ui.Button):
+class VerifyStudentButton(discord.ui.Button):
     def __init__(self):
-        super().__init__(label="Start Verification", style=discord.ButtonStyle.primary)
+        super().__init__(label="Student Verification", style=discord.ButtonStyle.primary)
 
     async def callback(self, interaction: discord.Interaction):
         user = interaction.user
@@ -194,18 +192,8 @@ async def on_ready():
 
     if channel:
         view = View()
-        view.add_item(VerifyButton())
-        await channel.send("Welcome to the server! Click the button below to start the verification process.", view=view)
-
-# Send Static Verification Message When Bot Joins a New Guild
-@bot.event
-async def on_guild_join(guild):
-    channel = guild.get_channel(VERIFICATION_CHANNEL_ID)
-
-    if channel:
-        view = View()
-        view.add_item(VerifyButton())
-        await channel.send("Welcome to the server! Click the button below to start the verification process.", view=view)
+        view.add_item(VerifyStudentButton())
+        await channel.send("If you are a student, click the button below to start the verification process.", view=view)
 
 
 bot.run(TOKEN)
