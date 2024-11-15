@@ -119,7 +119,7 @@ class StudentVerifyButton(discord.ui.Button):
             connection.commit()
 
             # Send the verification email
-            if not send_verification_email(rcsid, verification_code):
+            if not send_verification_email(rcsid, verification_code, 1):
                 await user.send("Failed to send the verification email. Please try again later.")
                 return
 
@@ -284,9 +284,11 @@ class AlumniVerifyButton(discord.ui.Button):
                 print(f"Assigned 'temp' role to {user.display_name}.")
             except discord.Forbidden:
                 await user.send("I do not have permission to assign the temporary role. Please contact an administrator.")
+                return
             except Exception as e:
                 await user.send("An error occurred while assigning the temporary role. Please try again later.")
                 print(f"Error assigning 'temp' role: {e}")
+                return
 
         # Ensure the modmail channel exists and set permissions
         modmail_channel = discord.utils.get(guild.text_channels, name="modmail")
@@ -304,9 +306,97 @@ class AlumniVerifyButton(discord.ui.Button):
             except Exception as e:
                 await user.send("An error occurred while creating the modmail channel. Please contact an administrator.")
                 print(f"Error creating 'modmail' channel: {e}")
+                return
         else:
             # Update permissions for the "temp" role in the existing modmail channel
             await modmail_channel.set_permissions(temp_role, read_messages=True, send_messages=True)
+
+        # Retrieve the roles by name
+        co_president_role = discord.utils.get(guild.roles, name="Co-President")
+        secretary_role = discord.utils.get(guild.roles, name="Secretary")
+        treasurer_role = discord.utils.get(guild.roles, name="Treasurer")
+        representative_role = discord.utils.get(guild.roles, name="Representative")
+
+        # Construct the ping message
+        role_mentions = []
+        if co_president_role:
+            role_mentions.append(co_president_role.mention)
+        if secretary_role:
+            role_mentions.append(secretary_role.mention)
+        if treasurer_role:
+            role_mentions.append(treasurer_role.mention)
+        if representative_role:
+            role_mentions.append(representative_role.mention)
+
+        if role_mentions:
+            mention_message = f"{', '.join(role_mentions)}: {user.mention} needs Alumni verification."
+            try:
+                await modmail_channel.send(mention_message)
+                print("Successfully pinged the roles for Alumni verification.")
+            except Exception as e:
+                await user.send("An error occurred while notifying the admins. Please contact an administrator.")
+                print(f"Error sending ping message in modmail channel: {e}")
+            
+# Prospective Student Verification Button Class
+class ProspectiveVerifyButton(discord.ui.Button):
+    def __init__(self):
+        super().__init__(label="Prospective Student Verification", style=discord.ButtonStyle.secondary)
+
+    async def callback(self, interaction: discord.Interaction):
+        user = interaction.user
+        guild = interaction.guild
+        await interaction.response.send_message("A DM has been sent to you. Please check your DMs!", ephemeral=True)
+
+        # Prompt the user to provide their full email address
+        await user.send("Hello! Please reply with your full email address (e.g., example@example.com) to receive a verification code.")
+
+        def email_check(m):
+            return m.author == user and m.channel == user.dm_channel and "@" in m.content and "." in m.content
+
+        try:
+            # Wait for the user to provide their email address
+            email_msg = await bot.wait_for('message', check=email_check, timeout=300)
+            email = email_msg.content.strip()
+
+            # Generate a verification code
+            verification_code = generate_verification_code()
+
+            # Send the verification email
+            if not send_verification_email(email, verification_code, 0):
+                await user.send("Failed to send the verification email. Please try again later.")
+                return
+
+            await user.send("A verification code has been sent to your email. Please reply with the 6-digit code. You have 5 minutes to complete the verification.")
+
+            def code_check(m):
+                return m.author == user and m.channel == user.dm_channel and m.content.isdigit() and len(m.content) == 6
+
+            try:
+                # Wait for the user to enter the verification code
+                code_msg = await bot.wait_for('message', check=code_check, timeout=300)
+                entered_code = int(code_msg.content)
+
+                if entered_code == verification_code:
+                    # Verification successful
+                    prospective_role = discord.utils.get(guild.roles, name="Prospective Student")
+
+                    if prospective_role is None:
+                        prospective_role = await guild.create_role(name="Prospective Student")
+
+                    member = guild.get_member(user.id)
+                    if member:
+                        await member.add_roles(prospective_role)
+                        await user.send("You have been successfully verified as a Prospective Student!")
+                else:
+                    # Incorrect verification code
+                    await user.send("The verification code is incorrect. Please try the verification process again.")
+
+            except asyncio.TimeoutError:
+                await user.send("Your verification time has expired. Please try the verification process again.")
+
+        except Exception as error:
+            await user.send("An error occurred during the prospective student verification process. Please try again later.")
+            print(f"Error: {error}")
 
 @bot.event
 async def on_ready():
@@ -327,12 +417,13 @@ async def on_ready():
         view.add_item(StudentVerifyButton())
         view.add_item(FriendVerifyButton())
         view.add_item(AlumniVerifyButton())
+        view.add_item(ProspectiveVerifyButton())
         await channel.send("Welcome to the server! Click the button that applies to you.\n", view=view)
 
 @bot.event
 async def on_guild_join(guild):
     channel = guild.get_channel(VERIFICATION_CHANNEL_ID)
-    
+
     # Delete previous messages sent by the bot
     try:
         async for message in channel.history(limit=10):
@@ -346,6 +437,7 @@ async def on_guild_join(guild):
         view.add_item(StudentVerifyButton())
         view.add_item(FriendVerifyButton())
         view.add_item(AlumniVerifyButton())
+        view.add_item(ProspectiveVerifyButton())
         await channel.send("Welcome to the server! Click the button that applies to you.\n", view=view)
         
 @bot.event
