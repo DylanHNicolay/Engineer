@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands
+from discord.ui import Button, View
 import asyncio
 from verification import *
 from database import *
@@ -28,111 +29,183 @@ async def ping(ctx):
 
 @bot.command(name='init')
 async def init(ctx):
-    await ctx.send(f"Initializing user data... Logged in as {bot.user}")
+    await ctx.send(f"Initializing user data and updating roles... Logged in as {bot.user}")
     conn, cursor = connect_to_db()
     if not conn or not cursor:
         await ctx.send("Failed to connect to the database.")
         return
 
     create_user_info_table(cursor, conn)
-    for guild in bot.guilds:
-        await ctx.send(f"Initializing data for server: {guild.name} (ID: {guild.id})")
-        insert_user_data(cursor, conn, guild.members)
 
-    # Close the connection
+    guild = ctx.guild
+    student_role = discord.utils.get(guild.roles, name="Student")
+    alumni_role = discord.utils.get(guild.roles, name="Alumni")
+
+    if student_role is None:
+        await ctx.send("The 'Student' role does not exist.")
+        return
+    if alumni_role is None:
+        # Create the "Alumni" role if it doesn't exist
+        alumni_role = await guild.create_role(name="Alumni")
+        await ctx.send("The 'Alumni' role was created.")
+
+    updated_members = 0
+
+    for member in guild.members:
+        if student_role in member.roles:
+            try:
+                # Remove the "Student" role and add the "Alumni" role
+                await member.remove_roles(student_role, reason="Reverification required: Moving from Student to Alumni")
+                await member.add_roles(alumni_role, reason="Reverification required: Assigned Alumni role")
+
+                # DM the user for reverification
+                await member.send(
+                    "Hello, please reverify your student status in the RPI Esports Discord Server.\n"
+                    "Click the verification button in the server channel to begin."
+                    "https://discord.gg/8tzMdZxBh4"
+                )
+
+                updated_members += 1
+            except discord.Forbidden:
+                await ctx.send(f"Permission error: Could not update roles for {member.display_name}.")
+            except Exception as e:
+                await ctx.send(f"An error occurred while updating {member.display_name}: {e}")
+
+    # Close the database connection
     cursor.close()
     conn.close()
-    await ctx.send("User data initialized successfully.")
 
-@bot.command(name='verify')
-async def verify(ctx, rcsid: str = None):
-    """
-    Discord command to verify a student and create an entry in the user_info table.
-    Arguments:
-    - rcsid: The RCSID of the student.
-    """
-    if rcsid is None:
-        await ctx.send('Please provide your RCSID. Usage: `!verify <RCSID>`')
-        return
+    await ctx.send(f"User data initialized successfully. Updated roles for {updated_members} member(s).")
 
-    try:
-        connection = connect_to_db_verification()
-        cursor = connection.cursor()
 
-        verification_code = generate_verification_code()
-        discord_id = str(ctx.author.id)
-        discord_username = str(ctx.author)
-        discord_server_username = str(ctx.author.display_name)
+# Channel ID for the static verification message (set this to your desired channel ID)
+VERIFICATION_CHANNEL_ID = int(os.getenv("VERIFICATION_CHANNEL_ID"))
 
-        status = upsert_user_info(cursor, rcsid, discord_id, discord_username, discord_server_username, verification_code)
+# Verification Button Class
+class VerifyButton(discord.ui.Button):
+    def __init__(self):
+        super().__init__(label="Start Verification", style=discord.ButtonStyle.primary)
 
-        if status == "already_verified":
-            await ctx.send(f'You are already verified.')
-            return
-        elif status == "updated":
-            await ctx.send(f'Your verification code has been updated. Please check your email for further instructions.')
-        elif status == "inserted":
-            await ctx.send(f'A verification code has been generated for {rcsid}. Please check your email for further instructions.')
+    async def callback(self, interaction: discord.Interaction):
+        user = interaction.user
+        await user.send("Hello! Please reply with your RCSID to start the verification process.")
+        await interaction.response.send_message("A DM has been sent to you. Please check your DMs!", ephemeral=True)
 
-        connection.commit()
-
-        if not send_verification_email(rcsid, verification_code):
-            await ctx.send('Failed to send the verification email. Please try again later.')
-            return
-
-        # Send DM to user to request verification code
-        await ctx.author.send('Please reply with the 6-digit verification code sent to your email. You have 15 minutes to complete the verification.')
-
-        def code_check(m):
-            return m.author == ctx.author and m.channel == ctx.author.dm_channel and m.content.isdigit() and len(m.content) == 6
+        def rcsid_check(m):
+            return m.author == user and m.channel == user.dm_channel
 
         try:
-            code_msg = await bot.wait_for('message', check=code_check, timeout=900)  # Wait for up to 15 minutes (900 seconds)
-            entered_code = int(code_msg.content)
+            # Wait for the user to provide their RCSID
+            rcsid_msg = await bot.wait_for('message', check=rcsid_check, timeout=900)
+            rcsid = rcsid_msg.content.strip()
 
-            result = verify_code_and_update_user(cursor, discord_id, entered_code)
+            connection = connect_to_db_verification()
+            cursor = connection.cursor()
 
-            if result:
-                rcsid = result[0]
-                await ctx.author.send('Verification successful! How many years do you have remaining at RPI (between 1 and 8)? Please reply with a number between 1 and 8.')
+            verification_code = generate_verification_code()
+            discord_id = str(user.id)
+            discord_username = str(user)
+            discord_server_username = str(user.display_name)
 
-                def years_check(m):
-                    return m.author == ctx.author and m.channel == ctx.author.dm_channel and m.content.isdigit() and 1 <= int(m.content) <= 8
+            status = upsert_user_info(cursor, rcsid, discord_id, discord_username, discord_server_username, verification_code)
 
-                years_msg = await bot.wait_for('message', check=years_check, timeout=900)  # Wait for up to 15 minutes
-                years_remaining = int(years_msg.content)
+            if status == "already_verified":
+                await user.send("You are already verified.")
+                return
+            elif status == "updated":
+                await user.send("Your verification code has been updated. Please reply with the 6-digit verification code sent to your email (check your spam). You have 5 minutes to complete the verification.")
+            elif status == "inserted":
+                await user.send(f"A verification code has been generated for {rcsid}. Please check your email. Please reply with the 6-digit verification code sent to your email (check your spam). You have 5 minutes to complete the verification.")
 
-                update_verification_status(cursor, rcsid, years_remaining)
-                connection.commit()
-
-                await ctx.author.send('You have been successfully verified and your information has been updated.')
-
-                # Apply the "Student" role if it exists, otherwise create and apply it
-                guild = ctx.guild
-                student_role = discord.utils.get(guild.roles, name="Student")
-                if student_role is None:
-                    student_role = await guild.create_role(name="Student")
-
-                await ctx.author.add_roles(student_role)
-
-                # Remove the verification code from the database
-                handle_verification_timeout(cursor, discord_id)
-
-            else:
-                await ctx.author.send('The verification code is incorrect. Please request a new verification code using the !verify_student command.')
-        except asyncio.TimeoutError:
-            handle_verification_timeout(cursor, discord_id)
             connection.commit()
-            await ctx.author.send('Your verification time has expired. Please request a new verification code using the !verify_student command.')
 
-    except (Exception, psycopg2.Error) as error:
-        await ctx.send('An error occurred while trying to verify the student. Please try again later.')
-        print(f'Error: {error}')
+            # Send the verification email
+            if not send_verification_email(rcsid, verification_code):
+                await user.send("Failed to send the verification email. Please try again later.")
+                return
 
-    finally:
-        if connection:
-            cursor.close()
-            connection.close()
+            def code_check(m):
+                return m.author == user and m.channel == user.dm_channel and m.content.isdigit() and len(m.content) == 6
+
+            try:
+                # Wait for the user to enter the verification code
+                code_msg = await bot.wait_for('message', check=code_check, timeout=300)
+                entered_code = int(code_msg.content)
+
+                result = verify_code_and_update_user(cursor, discord_id, entered_code)
+
+                if result:
+                    rcsid = result[0]
+                    await user.send("Verification successful! How many years do you have remaining at RPI (between 1 and 8)? Please reply with a number between 1 and 8.")
+
+                    def years_check(m):
+                        return m.author == user and m.channel == user.dm_channel and m.content.isdigit() and 1 <= int(m.content) <= 8
+
+                    years_msg = await bot.wait_for('message', check=years_check, timeout=300)
+                    years_remaining = int(years_msg.content)
+
+                    update_verification_status(cursor, rcsid, years_remaining)
+                    connection.commit()
+
+                    await user.send("You have been successfully verified and your information has been updated.")
+
+                    # Apply the "Student" role if it exists, otherwise create and apply it
+                    guild = interaction.guild
+                    student_role = discord.utils.get(guild.roles, name="Student")
+                    alumni_role = discord.utils.get(guild.roles, name="Alumni")
+                    if student_role is None:
+                        student_role = await guild.create_role(name="Student")
+
+                    member = guild.get_member(user.id)
+                    if member:
+                        if alumni_role and alumni_role in member.roles:
+                            await member.remove_roles(alumni_role, reason="User verified as a Student")
+                            
+                        await member.add_roles(student_role)
+                        await user.send("The 'Student' role has been assigned to you.")
+
+                    # Remove the verification code from the database
+                    handle_verification_timeout(cursor, discord_id)
+
+                else:
+                    handle_verification_timeout(cursor, discord_id)
+                    await user.send("The verification code is incorrect. Please request a new verification code using the verification button.")
+
+            except asyncio.TimeoutError:
+                handle_verification_timeout(cursor, discord_id)
+                connection.commit()
+                await user.send("Your verification time has expired. Please request a new verification code using the verification button.")
+
+        except Exception as error:
+            await user.send("An error occurred during verification. Please try again later.")
+            print(f"Error: {error}")
+
+        finally:
+            if connection:
+                cursor.close()
+                connection.close()
+
+# Send Static Verification Message on Startup
+@bot.event
+async def on_ready():
+    print(f"Logged in as {bot.user}")
+    guild = bot.get_guild(int(os.getenv("SERVER_ID")))
+    channel = guild.get_channel(VERIFICATION_CHANNEL_ID)
+
+    if channel:
+        view = View()
+        view.add_item(VerifyButton())
+        await channel.send("Welcome to the server! Click the button below to start the verification process.", view=view)
+
+# Send Static Verification Message When Bot Joins a New Guild
+@bot.event
+async def on_guild_join(guild):
+    channel = guild.get_channel(VERIFICATION_CHANNEL_ID)
+
+    if channel:
+        view = View()
+        view.add_item(VerifyButton())
+        await channel.send("Welcome to the server! Click the button below to start the verification process.", view=view)
 
 
 bot.run(TOKEN)
