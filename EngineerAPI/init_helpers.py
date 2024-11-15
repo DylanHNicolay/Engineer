@@ -6,6 +6,7 @@ async def initialize_roles(ctx, guild):
 
     if student_role is None:
         await ctx.send("The 'Student' role does not exist.")
+        student_role = await guild.create_role(name="Student")
         return None, None
     if alumni_role is None:
         # Create the "Alumni" role if it doesn't exist

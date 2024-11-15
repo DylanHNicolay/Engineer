@@ -46,24 +46,29 @@ def insert_user_data(cursor, conn, members):
     try:
         # Iterate through all members
         for member in members:
-            print(f"Inserting user data for {member}")
+            print(f"Inserting or updating user data for {member}")
             discord_id = str(member.id)
             discord_username = str(member.name)
             discord_server_username = str(member.display_name)
 
-            # Insert user data into the database
+            # Insert or update user data in the database
             insert_user_query = '''
             INSERT INTO user_info (RCSID, discord_id, discord_username, discord_server_username)
             VALUES (%s, %s, %s, %s)
-            ON CONFLICT (discord_id) DO NOTHING;
+            ON CONFLICT (discord_id) DO UPDATE
+            SET discord_username = EXCLUDED.discord_username,
+                discord_server_username = EXCLUDED.discord_server_username;
             '''
             cursor.execute(insert_user_query, ("", discord_id, discord_username, discord_server_username))
 
+            # Update additional user data
+            update_user_data(cursor, conn, member)
+
         # Commit changes
         conn.commit()
-        print("User data inserted successfully")
+        print("User data inserted or updated successfully")
     except Exception as e:
-        print(f"Error inserting user data into PostgreSQL DB: {e}")
+        print(f"Error inserting or updating user data in PostgreSQL DB: {e}")
 
 # updates the data of a singular user
 def update_user_data(cursor, conn, member, rcsid=""):
