@@ -32,7 +32,7 @@ async def ping(ctx):
 async def init(ctx):
     await ctx.send(f"Initializing user data and updating roles... Logged in as {bot.user}")
     conn, cursor = connect_to_db()
-    if not conn or not cursor:
+    if not (conn and cursor):
         await ctx.send("Failed to connect to the database.")
         return
 
@@ -56,14 +56,14 @@ async def init(ctx):
         if student_role in member.roles:
             try:
                 # Remove the "Student" role and add the "Alumni" role
-                await member.remove_roles(student_role, reason="Reverification required: Moving from Student to Alumni")
+                await member.remove_roles(student_role, reason="Reverification: Moving from Student to Alumni")
                 await member.add_roles(alumni_role, reason="Reverification required: Assigned Alumni role")
 
                 # DM the user for reverification
                 await member.send(
                     "Hello, please reverify your student status in the RPI Esports Discord Server.\n"
                     "Click the verification button in the server channel to begin."
-                    "https://discord.gg/8tzMdZxBh4"
+                    "(https://discord.gg/8tzMdZxBh4)"
                 )
 
                 updated_members += 1
@@ -73,17 +73,18 @@ async def init(ctx):
                 await ctx.send(f"An error occurred while updating {member.display_name}: {e}")
 
     # Close the database connection
-    cursor.close()
-    conn.close()
+    await ctx.send(f"User data initialized successfully. Updated roles for {updated_members} members.")
 
-    await ctx.send(f"User data initialized successfully. Updated roles for {updated_members} member(s).")
+    if cursor:
+        cursor.close()
+    if conn:
+        conn.close()
 
 
 # Channel ID for the static verification message (set this to your desired channel ID)
 VERIFICATION_CHANNEL_ID = int(os.getenv("VERIFICATION_CHANNEL_ID"))
 
-
-# Verification Button Class
+# Student Verification Button Class
 class StudentVerifyButton(discord.ui.Button):
     def __init__(self):
         super().__init__(label="Start Verification", style=discord.ButtonStyle.primary)
@@ -195,6 +196,7 @@ class FriendVerifyButton(discord.ui.Button):
     async def callback(self, interaction: discord.Interaction):
         user = interaction.user
         await user.send("Please reply with your friend's Discord user ID (the numbers). You can find it by right-clicking their profile and selecting 'Copy ID' (make sure Developer Mode is enabled).")
+        await interaction.response.send_message("A DM has been sent to you. Please check your DMs!", ephemeral=True)
 
         def id_check(m):
             return m.author == user and m.channel == user.dm_channel and m.content.isdigit()
@@ -215,11 +217,11 @@ class FriendVerifyButton(discord.ui.Button):
                 # DM the friend for verification
                 try:
                     await friend.send(
-                        f"Hello! {user.display_name} has requested that you verify them in the RPI Esports Discord server.\n"
+                        f"Hello! {user.display_name} has requested that you verify them in the RPI Esports server.\n"
                         "If you confirm that you know them, please reply with 'yes'. Otherwise, please reply 'no'."
                     )
 
-                    await user.send(f"A verification request has been sent to {friend.display_name}. Please wait for them to respond.")
+                    await user.send(f"A verification request has been sent to {friend.display_name}.")
 
                     def friend_response_check(m):
                         return m.author == friend and m.channel == friend.dm_channel and m.content.lower() in ['yes', 'no']
@@ -251,7 +253,7 @@ class FriendVerifyButton(discord.ui.Button):
                     print(f"Error DMing friend: {e}")
 
             except discord.NotFound:
-                await user.send("The specified user ID could not be found. Please ensure you provided a valid Discord user ID.")
+                await user.send("The specified user ID could not be found.")
             except discord.HTTPException as e:
                 await user.send("An error occurred while fetching the user. Please try again later.")
                 print(f"Error fetching user by ID: {e}")
@@ -261,32 +263,94 @@ class FriendVerifyButton(discord.ui.Button):
         except Exception as error:
             await user.send("An error occurred during the friend verification process. Please try again later.")
             print(f"Error: {error}")
+            
+# Alumni Verification Button Class
+class AlumniVerifyButton(discord.ui.Button):
+    def __init__(self):
+        super().__init__(label="Alumni Verification", style=discord.ButtonStyle.success)
 
-# Send Static Verification Message on Startup
+    async def callback(self, interaction: discord.Interaction):
+        user = interaction.user
+        guild = interaction.guild
+        await interaction.response.send_message("A DM has been sent to you. Please check your DMs!", ephemeral=True)
+
+        # Check if the "temp" role exists, if not, create it
+        temp_role = discord.utils.get(guild.roles, name="temp")
+        if temp_role is None:
+            temp_role = await guild.create_role(name="temp", reason="Temporary role for Alumni Verification")
+
+        # Assign the "temp" role to the user
+        member = guild.get_member(user.id)
+        if member:
+            try:
+                await member.add_roles(temp_role, reason="Alumni Verification: Assigned temporary role")
+                await user.send("Please go to the **#modmail** channel and provide additional information for alumni verification.")
+                print(f"Assigned 'temp' role to {user.display_name}.")
+            except discord.Forbidden:
+                await user.send("I do not have permission to assign the temporary role. Please contact an administrator.")
+            except Exception as e:
+                await user.send("An error occurred while assigning the temporary role. Please try again later.")
+                print(f"Error assigning 'temp' role: {e}")
+
+        # Ensure the modmail channel exists and set permissions
+        modmail_channel = discord.utils.get(guild.text_channels, name="modmail")
+        if modmail_channel is None:
+            # Create the modmail channel if it doesn't exist
+            overwrites = {
+                guild.default_role: discord.PermissionOverwrite(read_messages=False),
+                temp_role: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+                guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+            }
+            try:
+                modmail_channel = await guild.create_text_channel("modmail", overwrites=overwrites)
+                await user.send("A private modmail channel has been created. You can now access it for alumni verification.")
+                print("Created 'modmail' text channel with permissions.")
+            except Exception as e:
+                await user.send("An error occurred while creating the modmail channel. Please contact an administrator.")
+                print(f"Error creating 'modmail' channel: {e}")
+        else:
+            # Update permissions for the "temp" role in the existing modmail channel
+            await modmail_channel.set_permissions(temp_role, read_messages=True, send_messages=True)
+
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
     guild = bot.get_guild(int(os.getenv("SERVER_ID")))
     channel = guild.get_channel(VERIFICATION_CHANNEL_ID)
+    
+    # Delete previous messages sent by the bot
+    try:
+        async for message in channel.history(limit=10):
+            if message.author == bot.user:
+                await message.delete()
+    except Exception as e:
+        print(f"Error deleting previous messages: {e}")
 
     if channel:
         view = View()
         view.add_item(StudentVerifyButton())
         view.add_item(FriendVerifyButton())
-        await channel.send("Welcome to the server! If you are a **STUDENT**, click the button below to start the verification process.\n"
-                           "You can also use the Friend Verification option if preferred.", view=view)
+        view.add_item(AlumniVerifyButton())
+        await channel.send("Welcome to the server! Click the button that applies to you.\n", view=view)
 
-# Send Static Verification Message When Bot Joins a New Guild
 @bot.event
 async def on_guild_join(guild):
     channel = guild.get_channel(VERIFICATION_CHANNEL_ID)
+    
+    # Delete previous messages sent by the bot
+    try:
+        async for message in channel.history(limit=10):
+            if message.author == bot.user:
+                await message.delete()
+    except Exception as e:
+        print(f"Error deleting previous messages: {e}")
 
     if channel:
         view = View()
         view.add_item(StudentVerifyButton())
         view.add_item(FriendVerifyButton())
-        await channel.send("Welcome to the server! If you are a **STUDENT**, click the button below to start the verification process.\n"
-                           "You can also use the Friend Verification option if preferred.", view=view)
+        view.add_item(AlumniVerifyButton())
+        await channel.send("Welcome to the server! Click the button that applies to you.\n", view=view)
         
 @bot.event
 async def on_command_error(ctx, error):
