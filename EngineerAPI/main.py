@@ -28,6 +28,7 @@ async def ping(ctx):
         await ctx.send('pong!')
 
 @bot.command(name='init')
+@commands.has_permissions(administrator=True)
 async def init(ctx):
     await ctx.send(f"Initializing user data and updating roles... Logged in as {bot.user}")
     conn, cursor = connect_to_db()
@@ -81,8 +82,9 @@ async def init(ctx):
 # Channel ID for the static verification message (set this to your desired channel ID)
 VERIFICATION_CHANNEL_ID = int(os.getenv("VERIFICATION_CHANNEL_ID"))
 
+
 # Verification Button Class
-class VerifyButton(discord.ui.Button):
+class StudentVerifyButton(discord.ui.Button):
     def __init__(self):
         super().__init__(label="Start Verification", style=discord.ButtonStyle.primary)
 
@@ -194,18 +196,12 @@ async def on_ready():
 
     if channel:
         view = View()
-        view.add_item(VerifyButton())
-        await channel.send("Welcome to the server! Click the button below to start the verification process.", view=view)
-
-# Send Static Verification Message When Bot Joins a New Guild
+        view.add_item(StudentVerifyButton())
+        await channel.send("Welcome to the server! If you are a **STUDENT** click the button below to start the verification process.", view=view)
+        
 @bot.event
-async def on_guild_join(guild):
-    channel = guild.get_channel(VERIFICATION_CHANNEL_ID)
-
-    if channel:
-        view = View()
-        view.add_item(VerifyButton())
-        await channel.send("Welcome to the server! Click the button below to start the verification process.", view=view)
-
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send("You do not have permission to use this command. Only administrators can use `!init`.")
 
 bot.run(TOKEN)
