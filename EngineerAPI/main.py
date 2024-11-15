@@ -87,7 +87,7 @@ VERIFICATION_CHANNEL_ID = int(os.getenv("VERIFICATION_CHANNEL_ID"))
 # Student Verification Button Class
 class StudentVerifyButton(discord.ui.Button):
     def __init__(self):
-        super().__init__(label="Start Verification", style=discord.ButtonStyle.primary)
+        super().__init__(label="Student Verification", style=discord.ButtonStyle.primary)
 
     async def callback(self, interaction: discord.Interaction):
         user = interaction.user
