@@ -1,51 +1,15 @@
 import psycopg2
 import os
 import random
-import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-
-# Database connection helper
-def connect_to_db_verification():
-    return psycopg2.connect(
-        database=os.getenv("POSTGRES_DB"),
-        user=os.getenv("POSTGRES_USER"),
-        password=os.getenv("POSTGRES_PASSWORD"),
-        host=os.getenv("PG_HOST"),
-        port=os.getenv("POSTGRES_PORT")
-    )
+from email_utils import send_verification_email  # Import from new file
+from database import connect_to_db  # Import the unified function
 
 # Generate verification code
 def generate_verification_code():
     return random.randint(100000, 999999)
 
-# Send verification email
-def send_verification_email(rcsid, verification_code):
-    email = f"{rcsid}@rpi.edu"
-    message = MIMEMultipart()
-    message['From'] = os.getenv("GMAIL")
-    message['To'] = email
-    message["Subject"] = "Verification Code"
-    message.attach(MIMEText(f'Your verification code is: {verification_code}', "plain"))
-
-    try:
-        server = smtplib.SMTP('smtp.gmail.com', 587)
-        server.starttls()
-        server.login(os.getenv("GMAIL"), os.getenv("GMAIL_PASS"))
-        server.sendmail(os.getenv("GMAIL"), email, message.as_string())
-        print(f"Email successfully sent to {email}")
-    except Exception as e:
-        print(f"Failed to send email: {e}")
-        return False
-    finally:
-        try:
-            server.quit()
-        except Exception as quit_error:
-            print(f"Failed to close the connection properly: {quit_error}")
-    return True
-
 # Insert or update user information in the database
-def upsert_user_info(cursor, rcsid, discord_id, discord_username, discord_server_username, verification_code):
+def update_user_info(cursor, rcsid, discord_id, discord_username, discord_server_username, verification_code):
     try:
         # Step 1: Check if discord_id exists
         check_query = """
@@ -89,7 +53,8 @@ def upsert_user_info(cursor, rcsid, discord_id, discord_username, discord_server
                         RCSID = %s,
                         discord_username = %s,
                         discord_server_username = %s,
-                        verification_code = %s
+                        verification_code = %s,
+                        is_verified = FALSE
                     WHERE discord_id = %s
                 """
                 cursor.execute(update_query, (
