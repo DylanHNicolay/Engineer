@@ -112,74 +112,100 @@ class FriendVerifyButton(discord.ui.Button):
 
     async def callback(self, interaction: discord.Interaction):
         user = interaction.user
-        await user.send("Please reply with your friend's Discord user ID (the numbers). You can find it by right-clicking their profile and selecting 'Copy ID' (make sure Developer Mode is enabled).")
+        await user.send("Please reply with your friend's unique Discord username (e.g., 'username').")
         await interaction.response.send_message("A DM has been sent to you. Please check your DMs!", ephemeral=True)
 
-        def id_check(m):
-            return m.author == user and m.channel == user.dm_channel and m.content.isdigit()
+        connection, cursor = None, None
 
         try:
-            # Wait for the user to provide their friend's Discord user ID
-            friend_msg = await self.bot.wait_for('message', check=id_check, timeout=300)
-            friend_id = int(friend_msg.content.strip())
+            # Step 1: Get friend's unique username
+            friend_username = await self.get_friend_username(user)
 
-            try:
-                # Fetch the friend's user object using the Discord user ID
-                friend = await self.bot.fetch_user(friend_id)
+            # Step 2: Connect to the database
+            connection, cursor = connect_to_db()
+            if not connection or not cursor:
+                await user.send("Failed to connect to the database. Please try again later.")
+                return
 
-                if not friend:
-                    await user.send("The user could not be found. Please ensure you provided the correct Discord user ID.")
-                    return
+            # Update user data in the database
+            update_user_data(cursor, connection, user, friend_username)
 
-                # DM the friend for verification
-                try:
-                    await friend.send(
-                        f"Hello! {user.display_name} has requested that you verify them in the RPI Esports server.\n"
-                        "If you confirm that you know them, please reply with 'yes'. Otherwise, please reply 'no'."
-                    )
+            # Step 3: Find the friend's member object in the guild
+            guild = interaction.guild
+            friend = discord.utils.get(guild.members, name=friend_username)
 
-                    await user.send(f"A verification request has been sent to {friend.display_name}.")
+            if not friend:
+                await user.send("The user could not be found in the server. Please ensure you provided the correct username.")
+                return
 
-                    def friend_response_check(m):
-                        return m.author == friend and m.channel == friend.dm_channel and m.content.lower() in ['yes', 'no']
-
-                    # Wait for the friend's response
-                    response_msg = await self.bot.wait_for('message', check=friend_response_check, timeout=86400)
-
-                    if response_msg.content.lower() == 'yes':
-                        # Verification successful
-                        friend_role = discord.utils.get(interaction.guild.roles, name="Friend")
-
-                        if friend_role is None:
-                            friend_role = await interaction.guild.create_role(name="Friend")
-
-                        member = interaction.guild.get_member(user.id)
-                        if member:
-                            await member.add_roles(friend_role)
-                            await user.send("You have been verified!")
-                            await friend.send("Thank you for verifying your friend!")
-                    else:
-                        # Verification denied
-                        await user.send("Your friend did not verify you. Please try another verification method.")
-                        await friend.send("You chose not to verify your friend.")
-
-                except discord.Forbidden:
-                    await user.send(f"Could not send a DM to {friend.display_name}. Please ask them to allow DMs from server members.")
-                except Exception as e:
-                    await user.send("An error occurred while sending a verification request to your friend. Please try again later.")
-                    print(f"Error DMing friend: {e}")
-
-            except discord.NotFound:
-                await user.send("The specified user ID could not be found.")
-            except discord.HTTPException as e:
-                await user.send("An error occurred while fetching the user. Please try again later.")
-                print(f"Error fetching user by ID: {e}")
+            # Step 4: DM the friend for verification
+            await self.send_verification_request(friend, user, guild, connection, cursor)
 
         except asyncio.TimeoutError:
             await user.send("Verification request timed out. Please try again.")
         except Exception as error:
             await user.send("An error occurred during the friend verification process. Please try again later.")
             print(f"Error: {error}")
+        finally:
+            if cursor:
+                cursor.close()
+            if connection:
+                connection.close()
+
+    async def get_friend_username(self, user):
+        def username_check(m):
+            return m.author == user and m.channel == user.dm_channel and "#" not in m.content  # No discriminators now
+
+        friend_msg = await self.bot.wait_for('message', check=username_check, timeout=300)
+        return friend_msg.content.strip()
+
+    async def send_verification_request(self, friend, user, guild, connection, cursor):
+        try:
+            await friend.send(
+                f"Hello! {user.display_name} has requested that you verify them in the RPI Esports server.\n"
+                "If you confirm that you know them, please reply with 'yes'. Otherwise, please reply 'no'."
+            )
+
+            await user.send(f"A verification request has been sent to {friend.display_name}.")
+
+            def friend_response_check(m):
+                return m.author == friend and m.channel == friend.dm_channel and m.content.lower() in ['yes', 'no']
+
+            # Wait for the friend's response
+            response_msg = await self.bot.wait_for('message', check=friend_response_check, timeout=86400)
+
+            if response_msg.content.lower() == 'yes':
+                await self.complete_verification(user, guild, friend, connection, cursor)
+            else:
+                await user.send("Your friend did not verify you. Please try another verification method.")
+                await friend.send("You chose not to verify your friend.")
+
+        except discord.Forbidden:
+            await user.send(f"Could not send a DM to {friend.display_name}. Please ask them to allow DMs from server members.")
+        except Exception as e:
+            await user.send("An error occurred while sending a verification request to your friend. Please try again later.")
+            print(f"Error DMing friend: {e}")
+
+    async def complete_verification(self, user, guild, friend, connection, cursor):
+        # Assign the "Friend" role
+        friend_role = discord.utils.get(guild.roles, name="Friend")
+        if friend_role is None:
+            friend_role = await guild.create_role(name="Friend")
+
+        member = guild.get_member(user.id)
+        if member:
+            await member.add_roles(friend_role)
+            await user.send("You have been verified and the 'Friend' role has been assigned to you.")
+            await friend.send("Thank you for verifying your friend!")
+
+        # Update database to reflect verification
+        try:
+            update_user_data(cursor, connection, user, "Friend Verification Completed")
+            connection.commit()
+        except Exception as e:
+            await user.send("An error occurred while updating your verification status. Please contact an administrator.")
+            print(f"Error updating database after friend verification: {e}")
+
 
 class AlumniVerifyButton(discord.ui.Button):
     def __init__(self, bot):
