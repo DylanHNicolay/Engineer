@@ -15,7 +15,7 @@ async def initialize_roles(ctx, guild):
 
     return student_role, alumni_role
 
-async def update_member_roles(guild, student_role, alumni_role):
+async def remove_student_roles(guild, student_role, alumni_role):
     updated_members = 0
 
     for member in guild.members:

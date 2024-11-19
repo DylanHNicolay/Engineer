@@ -7,7 +7,7 @@ from database import *
 import os
 import datetime
 from verification_handler import VerifyStudentButton, FriendVerifyButton, AlumniVerifyButton, ProspectiveVerifyButton  # Import the VerifyStudentButton, FriendVerifyButton, AlumniVerifyButton, and ProspectiveVerifyButton classes
-from init_helpers import initialize_roles, update_member_roles
+from init_helpers import *
 
 TOKEN = os.getenv("DISCORD_KEY")
 SERVER = os.getenv("SERVER_ID")
@@ -26,7 +26,7 @@ async def on_ready():
     print(f"Logged in as {bot.user}")
     guild = bot.get_guild(int(os.getenv("SERVER_ID")))
 
-    # Initialize user data and update roles
+    # Initialize user data
     conn, cursor = connect_to_db()
     if not conn or not cursor:
         print("Failed to connect to the database.")
@@ -38,14 +38,12 @@ async def on_ready():
 
     if student_role is None or alumni_role is None:
         return
-    
-    updated_members = await update_member_roles(guild, student_role, alumni_role)
 
     # Close the database connection
     cursor.close()
     conn.close()
 
-    print(f"User data initialized successfully. Updated roles for {updated_members} member(s).")
+    print("User data initialized successfully.")
 
     # Send Static Verification Message
     channel = guild.get_channel(int(os.getenv("VERIFICATION_CHANNEL_ID")))
@@ -62,5 +60,17 @@ async def on_ready():
 async def ping(ctx):
     if ctx.channel.id == CHANNEL:
         await ctx.send('pong!')
+
+@bot.command(name='remove_student_roles')
+async def update_year(ctx):
+    guild = bot.get_guild(int(os.getenv("SERVER_ID")))
+    student_role, alumni_role = await initialize_roles(None, guild)
+
+    if student_role is None or alumni_role is None:
+        await ctx.send("Failed to initialize roles.")
+        return
+
+    updated_members = await remove_student_roles(guild, student_role, alumni_role)
+    await ctx.send(f"Updated roles for {updated_members} member(s).")
 
 bot.run(TOKEN)
