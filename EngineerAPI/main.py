@@ -6,7 +6,7 @@ from verification import *
 from database import *
 import os
 import datetime
-from verification_handler import VerifyStudentButton  # Import the VerifyStudentButton class
+from verification_handler import VerifyStudentButton, FriendVerifyButton, AlumniVerifyButton, ProspectiveVerifyButton  # Import the VerifyStudentButton, FriendVerifyButton, AlumniVerifyButton, and ProspectiveVerifyButton classes
 from init_helpers import initialize_roles, update_member_roles
 
 TOKEN = os.getenv("DISCORD_KEY")
@@ -53,6 +53,9 @@ async def on_ready():
     if channel:
         view = View()
         view.add_item(VerifyStudentButton(bot))  # Pass the bot instance
+        view.add_item(FriendVerifyButton(bot))  # Add the FriendVerifyButton
+        view.add_item(AlumniVerifyButton(bot))  # Add the AlumniVerifyButton
+        view.add_item(ProspectiveVerifyButton(bot))  # Add the ProspectiveVerifyButton
         await channel.send("If you are a student, click the button below to start the verification process.", view=view)
 
 @bot.command(name='ping')

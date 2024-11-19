@@ -4,8 +4,11 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 # Send verification email
-def send_verification_email(rcsid, verification_code):
-    email = f"{rcsid}@rpi.edu"
+def send_verification_email(rcsid, verification_code, sw):
+    if sw == 1:
+        email = f"{rcsid}@rpi.edu"
+    else:
+        email = f"{rcsid}"
     message = MIMEMultipart()
     message['From'] = os.getenv("GMAIL")
     message['To'] = email
