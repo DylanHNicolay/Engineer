@@ -1,5 +1,7 @@
 import psycopg2
 import os
+import schedule
+from datetime import datetime
 
 def connect_to_db():
     try:
@@ -110,3 +112,67 @@ def update_all_users_data(cursor, conn, members):
         print("All user data updated successfully")
     except Exception as e:
         print(f"Error updating all user data in PostgreSQL DB: {e}")
+        
+def daily_update_task():
+    """Task that runs daily at 4:30 AM to update the database."""
+    print(f"Daily update started at {datetime.now()}")
+    conn, cursor = connect_to_db()
+    if not conn or not cursor:
+        print("Failed to connect to the database for the daily update.")
+        return
+
+    try:
+        # Fetch all users from the database
+        fetch_query = "SELECT discord_id, discord_username, discord_server_username FROM user_info;"
+        cursor.execute(fetch_query)
+        users = cursor.fetchall()
+
+        # Get the Discord guild
+        guild = bot.get_guild(int(os.getenv("SERVER_ID")))
+        if not guild:
+            print("Guild not found. Skipping user synchronization.")
+            return
+
+        # Iterate over each user in the database
+        for user in users:
+            discord_id, db_username, db_display_name = user
+
+            # Fetch the member information from the Discord server
+            member = guild.get_member(int(discord_id))
+
+            if not member:
+                # If the user is not found in the server, delete their entry from the database
+                delete_query = "DELETE FROM user_info WHERE discord_id = %s;"
+                cursor.execute(delete_query, (discord_id,))
+                print(f"Deleted user {discord_id} from the database (not found in the server).")
+                continue
+
+            # Check for mismatches and update the database if necessary
+            if member.name != db_username or member.display_name != db_display_name:
+                update_query = """
+                UPDATE user_info
+                SET discord_username = %s, discord_server_username = %s
+                WHERE discord_id = %s;
+                """
+                cursor.execute(update_query, (member.name, member.display_name, discord_id))
+                print(f"Updated user {discord_id}: Username='{member.name}', Display Name='{member.display_name}'")
+
+        conn.commit()
+        print("Daily update task completed successfully.")
+
+    except Exception as e:
+        print(f"Error during daily update task: {e}")
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+# Schedule the daily update task
+schedule.every().day.at("04:30").do(daily_update_task)
+
+if __name__ == "__main__":
+    print("Scheduler for daily database updates started.")
+    while True:
+        schedule.run_pending()
+        time.sleep(1)

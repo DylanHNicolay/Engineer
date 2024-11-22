@@ -2,3 +2,4 @@ discord.py
 dnspython
 psycopg2-binary
 python-dotenv
+schedule
