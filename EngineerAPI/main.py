@@ -8,6 +8,8 @@ import os
 import datetime
 from verification_handler import VerifyStudentButton, FriendVerifyButton, AlumniVerifyButton, ProspectiveVerifyButton  # Import the VerifyStudentButton, FriendVerifyButton, AlumniVerifyButton, and ProspectiveVerifyButton classes
 from init_helpers import *
+from year import reduce_years_in_db  # Import the new function
+from team import *  # Import the to_pdf function and create_team command
 
 TOKEN = os.getenv("DISCORD_KEY")
 SERVER = os.getenv("SERVER_ID")
@@ -71,6 +73,51 @@ async def update_year(ctx):
         return
 
     updated_members = await remove_student_roles(guild, student_role, alumni_role)
+    
+    # Update all members in the database
+    conn, cursor = connect_to_db()
+    if conn and cursor:
+        update_all_users_data(cursor, conn, guild.members)
+        cursor.close()
+        conn.close()
+
     await ctx.send(f"Updated roles for {updated_members} member(s).")
+
+@bot.command(name='year')
+async def reduce_years(ctx):
+    guild = bot.get_guild(int(os.getenv("SERVER_ID")))
+    conn, cursor = connect_to_db()
+    if not conn or not cursor:
+        await ctx.send("Failed to connect to the database.")
+        return
+
+    try:
+        await reduce_years_in_db(cursor, conn, guild)
+        await ctx.send("Years reduced and roles updated successfully.")
+    except Exception as e:
+        conn.rollback()
+        await ctx.send(f"Error updating years and roles: {e}")
+    finally:
+        cursor.close()
+        conn.close()
+
+@bot.command(name='purge')
+@commands.has_permissions(manage_messages=True)
+async def purge(ctx, number: int):
+    if ctx.channel.id == CHANNEL:
+        deleted = await ctx.channel.purge(limit=number)
+        await ctx.send(f'Deleted {len(deleted)} message(s)', delete_after=5)
+
+@bot.command(name='export_to_pdf')
+async def export_to_pdf(ctx):
+    if ctx.channel.id == CHANNEL:
+        output_file = "channel_history.pdf"
+        await to_pdf(ctx.channel, output_file)
+        await ctx.send(file=discord.File(output_file))
+        os.remove(output_file)
+
+@bot.command(name='create')
+async def create_team(ctx, game_name, team_name, team_members):
+    await create_team(ctx, game_name, team_name, team_members)
 
 bot.run(TOKEN)
