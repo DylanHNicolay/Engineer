@@ -7,7 +7,7 @@ from email_utils import *
 
 class VerifyStudentButton(discord.ui.Button):
     def __init__(self, bot):
-        super().__init__(label="Student Verification", style=discord.ButtonStyle.primary)
+        super().__init__(label="Student", style=discord.ButtonStyle.primary)
         self.bot = bot  # Store the bot instance
 
     async def callback(self, interaction: discord.Interaction):
@@ -107,7 +107,7 @@ class VerifyStudentButton(discord.ui.Button):
 
 class FriendVerifyButton(discord.ui.Button):
     def __init__(self, bot):
-        super().__init__(label="Friend Verification", style=discord.ButtonStyle.secondary)
+        super().__init__(label="Friend", style=discord.ButtonStyle.secondary)
         self.bot = bot  # Store the bot instance
 
     async def callback(self, interaction: discord.Interaction):
@@ -209,7 +209,7 @@ class FriendVerifyButton(discord.ui.Button):
 
 class AlumniVerifyButton(discord.ui.Button):
     def __init__(self, bot):
-        super().__init__(label="Alumni Verification", style=discord.ButtonStyle.success)
+        super().__init__(label="Alumni", style=discord.ButtonStyle.success)
         self.bot = bot  # Store the bot instance
 
     async def callback(self, interaction: discord.Interaction):
@@ -286,7 +286,7 @@ class AlumniVerifyButton(discord.ui.Button):
 
 class ProspectiveVerifyButton(discord.ui.Button):
     def __init__(self, bot):
-        super().__init__(label="Prospective Student Verification", style=discord.ButtonStyle.secondary)
+        super().__init__(label="Prospective Student", style=discord.ButtonStyle.secondary)
         self.bot = bot  # Store the bot instance
 
     async def callback(self, interaction: discord.Interaction):
