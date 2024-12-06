@@ -168,6 +168,47 @@ def daily_update_task():
         if conn:
             conn.close()
 
+def insert_election_candidate(election_name, candidate_name):
+    try:
+        insert_query = '''
+        INSERT INTO user_info (discord_username, discord_server_username, discord_id)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (discord_id) DO NOTHING;
+        '''
+        # Initialize votes to 0
+        cursor.execute(insert_query, (election_name, candidate_name, 0))
+        conn.commit()
+        print(f"Inserted candidate '{candidate_name}' for election '{election_name}'.")
+    except Exception as e:
+        print(f"Error inserting election candidate: {e}")
+
+def increment_vote(election_name, candidate_name):
+    try:
+        update_query = '''
+        UPDATE user_info
+        SET discord_id = discord_id + 1
+        WHERE discord_username = %s AND discord_server_username = %s;
+        '''
+        cursor.execute(update_query, (election_name, candidate_name))
+        conn.commit()
+        print(f"Incremented vote for '{candidate_name}' in election '{election_name}'.")
+    except Exception as e:
+        print(f"Error incrementing vote: {e}")
+
+def get_election_results(election_name):
+    try:
+        fetch_query = '''
+        SELECT discord_server_username, discord_id
+        FROM user_info
+        WHERE discord_username = %s;
+        '''
+        cursor.execute(fetch_query, (election_name,))
+        results = cursor.fetchall()
+        return {candidate: votes for candidate, votes in results}
+    except Exception as e:
+        print(f"Error fetching election results: {e}")
+        return {}
+
 # Schedule the daily update task
 schedule.every().day.at("04:30").do(daily_update_task)
 

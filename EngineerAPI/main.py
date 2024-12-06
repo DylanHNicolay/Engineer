@@ -23,13 +23,15 @@ intents.message_content = True  # Necessary for reading message content
 # Create an instance of Bot with a command prefix
 bot = commands.Bot(command_prefix='!', intents=intents)
 
+# Establish a global database connection
+conn, cursor = connect_to_db()
+
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
     guild = bot.get_guild(int(os.getenv("SERVER_ID")))
 
     # Initialize user data and update roles
-    conn, cursor = connect_to_db()
     if not conn or not cursor:
         print("Failed to connect to the database.")
         return
@@ -144,6 +146,15 @@ async def removerole(ctx):
 async def main():
     async with bot:
         await bot.load_extension('reactions')  # Load the ReactionRoles cog
+        await bot.load_extension('elections')  # Load the Elections cog
         await bot.start(TOKEN)
 
 asyncio.run(main())
+
+# Ensure the database connection is closed on shutdown
+@bot.event
+async def on_close():
+    if cursor:
+        cursor.close()
+    if conn:
+        conn.close()
