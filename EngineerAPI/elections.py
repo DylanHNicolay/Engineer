@@ -2,13 +2,11 @@ import discord
 from discord.ext import commands, tasks
 from discord.ui import Button, View
 import asyncio
-from database import *
-from database import insert_election_candidate, increment_vote, get_election_results  # Import new database functions
 
 class Elections(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.active_election = {}
+        self.active_election = {}  # Store election details in memory
 
     @commands.command(name='election')
     @commands.has_permissions(administrator=True)
@@ -20,7 +18,7 @@ class Elections(commands.Cog):
         duration_msg = await self.bot.wait_for('message', check=lambda m: m.author == ctx.author and m.channel == ctx.channel)
         duration = int(duration_msg.content.strip())
         
-        await ctx.send("Enter space separated list of candidates:")
+        await ctx.send("Enter space-separated list of candidates:")
         candidates_msg = await self.bot.wait_for('message', check=lambda m: m.author == ctx.author and m.channel == ctx.channel)
         candidates = candidates_msg.content.strip().split()
         
@@ -30,48 +28,50 @@ class Elections(commands.Cog):
             speech_msg = await self.bot.wait_for('message', check=lambda m: m.author == ctx.author and m.channel == ctx.channel)
             speeches[candidate] = speech_msg.content.strip()
         
-        # Insert candidates into the database with initial votes
-        for candidate in candidates:
-            insert_election_candidate(election_for.content.strip(), candidate)
+        # Initialize the in-memory election data
+        self.active_election = {
+            'name': election_for.content.strip(),
+            'candidates': {candidate: 0 for candidate in candidates},  # Candidate names with vote counts
+            'voters': {},  # Map of voter ID to candidate name
+        }
         
-        election_message = f"**Election For:** {election_for.content.strip()}\n\n"
+        election_message = f"**Election For:** {self.active_election['name']}\n\n"
         for idx, (candidate, speech) in enumerate(speeches.items(), start=1):
             election_message += f"({idx}): **{candidate}**: {speech}\n"
         
         view = View()
-        view.add_item(VoteButton(self, candidates))  # Pass candidates to VoteButton
+        view.add_item(VoteButton(self))  # Pass self (the cog) to the VoteButton
         election_msg = await ctx.send(election_message, view=view)
         
-        self.active_election['message_id'] = election_msg.id
-        self.active_election['candidates'] = candidates
-        self.active_election['voters'] = {}
-        self.active_election['name'] = election_for.content.strip()
-        
+        # Schedule the end of the election
         await asyncio.sleep(duration * 86400)  # Duration in seconds
-        
-        # Tally votes and announce winner
         await self.conclude_election(ctx)
 
-    # Modify election conclusion to use database results
     async def conclude_election(self, ctx):
-        results = get_election_results(self.active_election['name'])
-        if results:
-            winner, votes = max(results.items(), key=lambda item: item[1])
+        if not self.active_election:
+            await ctx.send("There is no active election to conclude.")
+            return
+        
+        # Tally the votes
+        candidates = self.active_election['candidates']
+        if candidates:
+            winner, votes = max(candidates.items(), key=lambda item: item[1])
             await ctx.send(f"The winner is {winner} with {votes} votes!")
         else:
             await ctx.send("No votes were cast.")
+        
+        # Reset the active election
         self.active_election = {}
 
 class VoteButton(discord.ui.Button):
-    def __init__(self, cog, candidates):
+    def __init__(self, cog):
         super().__init__(label="Vote", style=discord.ButtonStyle.primary)
-        self.cog = cog
-        self.candidates = candidates  # Store candidates list
+        self.cog = cog  # Store the cog instance
 
     async def callback(self, interaction: discord.Interaction):
         user = interaction.user
 
-        if self.cog.active_election is None:
+        if not self.cog.active_election:
             await interaction.response.send_message("There is no active election at the moment.", ephemeral=True)
             return
 
@@ -79,11 +79,12 @@ class VoteButton(discord.ui.Button):
             await interaction.response.send_message("You have already voted.", ephemeral=True)
             return
 
+        candidates = list(self.cog.active_election['candidates'].keys())
         try:
             # Send a DM to the user with voting options
             await user.send(
                 "Which person would you like to vote for (type the number):\n" +
-                "\n".join([f"({i+1}): {candidate}" for i, candidate in enumerate(self.candidates)])
+                "\n".join([f"({i+1}): {candidate}" for i, candidate in enumerate(candidates)])
             )
             # Inform the user in the channel that a DM has been sent
             await interaction.response.send_message("I've sent you a DM with the voting options.", ephemeral=True)
@@ -101,9 +102,9 @@ class VoteButton(discord.ui.Button):
             vote_msg = await self.cog.bot.wait_for('message', timeout=60.0, check=check)
             vote_number = int(vote_msg.content.strip())
 
-            if 1 <= vote_number <= len(self.candidates):
-                selected_candidate = self.candidates[vote_number - 1]
-                increment_vote(self.cog.active_election['name'], selected_candidate)
+            if 1 <= vote_number <= len(candidates):
+                selected_candidate = candidates[vote_number - 1]
+                self.cog.active_election['candidates'][selected_candidate] += 1
                 self.cog.active_election['voters'][user.id] = selected_candidate
                 await user.send(f"You voted for {selected_candidate}.")
                 await interaction.followup.send("Your vote has been recorded.", ephemeral=True)
