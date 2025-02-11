@@ -14,25 +14,56 @@
 ### Working Features
 #### Authentication
 Verify user’s status as current students, alumni, ‘friend’, or prospective using RPI email verification and other means.
+- **Student Verification:**
+  1. User clicks the "Student" button.
+  2. Bot sends a DM asking for the user's RCSID.
+  3. User provides their RCSID.
+  4. Bot generates a verification code and sends it to the user's RPI email.
+  5. User enters the verification code in the DM.
+  6. Bot verifies the code and asks for the number of years remaining at RPI.
+  7. User provides the number of years.
+  8. Bot assigns the "Student" role to the user.
+
+- **Friend Verification:**
+  1. User clicks the "Friend" button.
+  2. Bot sends a DM asking for the friend's unique Discord username.
+  3. User provides the friend's username.
+  4. Bot sends a DM to the friend asking for verification.
+  5. Friend responds with "yes" or "no".
+  6. If "yes", bot assigns the "Friend" role to the user.
+
+- **Alumni Verification:**
+  1. User clicks the "Alumni" button.
+  2. Bot assigns a temporary role and directs the user to the **#modmail** channel.
+  3. User provides additional information in the **#modmail** channel.
+  4. Admins verify the user and assign the "Alumni" role.
+
+- **Prospective Student Verification:**
+  1. User clicks the "Prospective Student" button.
+  2. Bot sends a DM asking for the user's email address.
+  3. User provides their email address.
+  4. Bot generates a verification code and sends it to the provided email.
+  5. User enters the verification code in the DM.
+  6. Bot verifies the code and assigns the "Prospective Student" role to the user.
 
 ### Features in Progress
 #### Role Management
 Automatically assign roles based on user status (current club member/current team), manage roles as students transition from students to alumni, and keep track of students ‘retiring’ from a club.
 
 #### Tryouts Management
-Facilitate tryouts and relevant role assignment. *(Work in Progress)*
+Facilitate tryouts and relevant role assignment. 
 
 #### Club Leader Elections
-Facilitate the organization and execution of club leader elections within Discord servers, enabling voting via various mediums (text, email, google form, discord vote). *(Work in Progress)*
+Facilitate the organization and execution of club leader elections within Discord servers, enabling voting via various mediums (text, email, google form, discord vote). 
 
 #### Web-Scraper
-Scrape union website to automate member due assignment and club leader appointment. *(Work in Progress)*
+Scrape union website to automate member due assignment and club leader appointment. 
 
 #### Management Tools
-Miscellaneous commands that enable board members and moderators to manage niche cases. *(Work in Progress)*
+Miscellaneous commands that enable board members and moderators to manage niche cases. 
 
 #### Multi-Server
-Enable the bot to work across multiple RPI discord servers. *(Work in Progress)*
+Enable the bot to work across multiple RPI discord servers. 
 
 ## Commands
 
