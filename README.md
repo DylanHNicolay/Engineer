@@ -11,43 +11,36 @@
 
 ## Features
 
-- **User Verification**: Authenticate users through their RCSID and assign appropriate roles.
-- **Role Management**: Automatically assign the "Student" role upon successful verification.
-- **Database Integration**: Store and manage user information securely.
+### Working Features
+#### Authentication
+Verify user’s status as current students, alumni, ‘friend’, or prospective using RPI email verification and other means.
 
+### Features in Progress
+#### Role Management
+Automatically assign roles based on user status (current club member/current team), manage roles as students transition from students to alumni, and keep track of students ‘retiring’ from a club.
 
+#### Tryouts Management
+Facilitate tryouts and relevant role assignment. *(Work in Progress)*
+
+#### Club Leader Elections
+Facilitate the organization and execution of club leader elections within Discord servers, enabling voting via various mediums (text, email, google form, discord vote). *(Work in Progress)*
+
+#### Web-Scraper
+Scrape union website to automate member due assignment and club leader appointment. *(Work in Progress)*
+
+#### Management Tools
+Miscellaneous commands that enable board members and moderators to manage niche cases. *(Work in Progress)*
+
+#### Multi-Server
+Enable the bot to work across multiple RPI discord servers. *(Work in Progress)*
 
 ## Commands
 
-- `!ping`
+### `!ping`
+Responds with "pong!" to check if the bot is active.
 
-  - **Description**: Checks if the bot is responsive.
-  - **Usage**: Simply type `!ping` in the designated channel.
-  - **Example**:
-
-    ```
-    User: !ping
-    Bot: pong!
-    ```
-
-- `!init`
-
-  - **Description**: Initializes user data and creates necessary database tables.
-  - **Usage**: Run `!init` to set up the user information table in the database.
-  - **Note**: This command should be run by an administrator.
-
-- `!verify`
-
-  - **Description**: Starts the user verification process.
-  - **Usage**: Users type `!verify` and follow the instructions provided.
-  - **Process**:
-    1. Click the "Start Verification" button prompted by the bot.
-    2. Check your DMs for further instructions.
-    3. Provide your RCSID when prompted.
-    4. Enter the 6-digit verification code sent to your email.
-    5. Specify the number of years remaining at RPI.
-    6. Upon successful verification, the "Student" role will be assigned.
-
+### `!remove_student_roles`
+Removes the student roles from members who are no longer students and assigns them the alumni role.
 
 ## Contributing
 
@@ -58,7 +51,7 @@ Contributions are welcome! If you'd like to contribute to this project, please f
 3. **Create a new branch** for your changes.
    ```bash
    git checkout -b feature/your-feature-name
-
+   ```
 
 ## License
 This project is open-source and available under the MIT License.
