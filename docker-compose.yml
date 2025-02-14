@@ -1,0 +1,14 @@
+services:
+  discord-bot:
+    build: ./Bot
+    env_file:
+      - ./Bot/.env
+    networks:
+      - bot-net
+    # ports:
+    #   - "3000:3000"
+    restart: unless-stopped
+
+networks:
+  bot-net:
+    driver: bridge
