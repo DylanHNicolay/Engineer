@@ -5,9 +5,30 @@ services:
       - ./Bot/.env
     networks:
       - bot-net
-    # ports:
-    #   - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
+
+  postgres:
+    build: 
+      context: ./Database
+      dockerfile: Dockerfile
+    env_file:
+      - ./Database/.env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - bot-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 2s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
 
 networks:
   bot-net:

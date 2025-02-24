@@ -1,11 +1,17 @@
-FROM python:3.12-slim
+FROM python:3.11-slim
 
-WORKDIR /EngineerBot
+WORKDIR /app
 
-COPY requirements.txt ./
+RUN apt-get update && apt-get install -y \
+    libpq-dev \
+    gcc \
+    # Remove cached package list files to reduce image size
+    && rm -rf /var/lib/apt/lists/*
 
-RUN pip3 install --no-cache-dir -r requirements.txt
+COPY requirements.txt .
+
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-CMD ["python3", "-u", "main.py"]
+CMD ["python", "main.py"]

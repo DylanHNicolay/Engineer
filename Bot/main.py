@@ -1,17 +1,29 @@
+import os
 import discord
 from discord import app_commands
-import os
+from discord.ext import commands
+from utils.db import Database
 
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
-
-class MyClient(discord.Client):
+intents.guilds = True
+ 
+class MyClient(commands.Bot):
     def __init__(self):
-        super().__init__(intents=intents)
-        self.tree = app_commands.CommandTree(self)
+        super().__init__(command_prefix="!", intents=intents)
+        self.db_manager = Database()  # initialize database manager
 
     async def setup_hook(self):
+        await self.db_manager.connect()  # connect to database
+        if self.tree is None:
+            self.tree = app_commands.CommandTree(self)
+        await self.tree.clear_commands(guild=None)
+
+        # Load cogs
+        for filename in os.listdir('./cogs'):
+            if filename.endswith('.py'):
+                await self.load_extension(f'cogs.{filename[:-3]}')
         await self.tree.sync()
 
 client = MyClient()
@@ -19,10 +31,5 @@ client = MyClient()
 @client.event
 async def on_ready():
     print(f'We have logged in as {client.user}')
-
-@client.tree.command()
-async def ping(interaction: discord.Interaction):
-    latency = round(client.latency * 1000) 
-    await interaction.response.send_message(f"Pong! Latency: {latency}ms")
 
 client.run(os.getenv("DISCORD_SECRET"))
