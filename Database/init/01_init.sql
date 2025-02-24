@@ -1,12 +1,34 @@
 -- Table for Discord users
 CREATE TABLE IF NOT EXISTS users (
     discord_id BIGINT PRIMARY KEY, -- 18-digit unique Discord identifier
-    verified BOOLEAN DEFAULT FALSE -- Indicates if the user is verified
+    verified BOOLEAN DEFAULT FALSE, 
+    student BOOLEAN DEFAULT FALSE,
+    alumni BOOLEAN DEFAULT FALSE,
+    prospective BOOLEAN DEFAULT FALSE,
+    friend BOOLEAN DEFAULT FALSE,
+    rpi_admin BOOLEAN DEFAULT FALSE,
+    CHECK (
+        (CASE WHEN student THEN 1 ELSE 0 END +
+         CASE WHEN alumni THEN 1 ELSE 0 END +
+         CASE WHEN prospective THEN 1 ELSE 0 END +
+         CASE WHEN friend THEN 1 ELSE 0 END +
+         CASE WHEN rpi_admin THEN 1 ELSE 0 END) <= 1
+    ),
+    CHECK (
+        (student OR alumni OR prospective OR friend OR rpi_admin) = false 
+        OR verified = true
+    )
 );
 
 -- Table for Discord guilds
 CREATE TABLE IF NOT EXISTS guilds (
-    guild_id BIGINT PRIMARY KEY
+    guild_id BIGINT PRIMARY KEY,
+    verified_role_id BIGINT,
+    student_role_id BIGINT,
+    alumni_role_id BIGINT,
+    prospective_student_role_id BIGINT,
+    friend_role_id BIGINT,
+    rpi_admin_role_id BIGINT
 );
 
 -- Table to map users to guilds

@@ -71,7 +71,7 @@ class Setup(commands.Cog):
             pending.cancel()
         await interaction.response.send_message(
             "Setup started! Please move the bot's role to the very top of the role hierarchy. "
-            "It must be the absolute top role (not below any other role). I'll notify in the setup channel once I detect the change."
+            "I'll notify you once I detect the change."
         )
 
     @commands.Cog.listener()
