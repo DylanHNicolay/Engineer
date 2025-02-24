@@ -16,9 +16,6 @@ class MyClient(commands.Bot):
 
     async def setup_hook(self):
         await self.db_manager.connect()  # connect to database
-        if self.tree is None:
-            self.tree = app_commands.CommandTree(self)
-        await self.tree.clear_commands(guild=None)
 
         # Load cogs
         for filename in os.listdir('./cogs'):
