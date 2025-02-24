@@ -54,9 +54,7 @@ class Setup(commands.Cog):
 
         # Send initial setup message
         await setup_channel.send(
-            f"Welcome {guild.owner.mention}! Please run `/setup begin` within 5 minutes to configure the bot.\n"
-            "IMPORTANT: When prompted, move your top role so that it is the absolute top (and not beneath any other role)."
-        )
+            f"Welcome {guild.owner.mention}! Please run `/setup begin` within 5 minutes to configure the bot.\n")
 
         # Schedule setup timeout
         self.pending_setups[guild.id] = asyncio.create_task(self.timeout_setup(guild, setup_channel))
