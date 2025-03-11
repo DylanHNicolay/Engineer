@@ -1,6 +1,6 @@
 -- Table for Discord users
 CREATE TABLE IF NOT EXISTS users (
-    discord_id BIGINT PRIMARY KEY, -- 18-digit unique Discord identifier
+    discord_id VARCHAR(18) PRIMARY KEY, -- 18-digit unique Discord identifier
     verified BOOLEAN DEFAULT FALSE, 
     student BOOLEAN DEFAULT FALSE,
     alumni BOOLEAN DEFAULT FALSE,
@@ -28,16 +28,15 @@ CREATE TABLE IF NOT EXISTS guilds (
     alumni_role_id BIGINT,
     prospective_student_role_id BIGINT,
     friend_role_id BIGINT,
-    rpi_admin_role_id BIGINT
+    rpi_admin_role_id BIGINT,
+    engineer_role_id BIGINT,
+    engineer_channel_id BIGINT
 );
 
-ALTER TABLE guilds
-ADD COLUMN IF NOT EXISTS engineer_role_id BIGINT,
-ADD COLUMN IF NOT EXISTS engineer_channel_id BIGINT;
 
 -- Table to map users to guilds
 CREATE TABLE IF NOT EXISTS user_guilds (
-    discord_id BIGINT REFERENCES users(discord_id),
+    discord_id VARCHAR(18) REFERENCES users(discord_id),
     guild_id BIGINT REFERENCES guilds(guild_id),
     PRIMARY KEY (discord_id, guild_id)
 );
