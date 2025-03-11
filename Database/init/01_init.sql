@@ -31,6 +31,10 @@ CREATE TABLE IF NOT EXISTS guilds (
     rpi_admin_role_id BIGINT
 );
 
+ALTER TABLE guilds
+ADD COLUMN IF NOT EXISTS engineer_role_id BIGINT,
+ADD COLUMN IF NOT EXISTS engineer_channel_id BIGINT;
+
 -- Table to map users to guilds
 CREATE TABLE IF NOT EXISTS user_guilds (
     discord_id BIGINT REFERENCES users(discord_id),

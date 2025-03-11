@@ -8,20 +8,20 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 intents.guilds = True
- 
+
 class MyClient(commands.Bot):
     def __init__(self):
         super().__init__(command_prefix="!", intents=intents)
-        self.db_manager = Database()  # initialize database manager
+        self.db_manager = Database()  # Initialize the database manager
 
     async def setup_hook(self):
-        await self.db_manager.connect()  # connect to database
+        await self.db_manager.connect()  # Connect to the database
 
         # Load cogs
         for filename in os.listdir('./cogs'):
             if filename.endswith('.py'):
                 await self.load_extension(f'cogs.{filename[:-3]}')
-        await self.tree.sync()
+        await self.tree.sync()  # Sync all slash commands
 
 client = MyClient()
 
