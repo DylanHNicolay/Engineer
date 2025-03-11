@@ -27,6 +27,12 @@ class EngineerBot(commands.Bot):
         )
         self.db_interface = DatabaseInterface(pool)
         
+        # Clear all global commands
+        self.tree.clear_commands(guild=None)
+        
+        # Sync the command tree with no commands initially
+        await self.tree.sync(guild=None)
+        
         # Load extensions
         for ext in self.initial_extensions:
             await self.load_extension(ext)
