@@ -35,12 +35,30 @@ class DatabaseInterface:
             self.log.error(f"Database fetchrow error: {e}")
             raise
 
+    async def get_guild_setup(self, guild_id: int) -> Optional[asyncpg.Record]:
+        """Get guild setup information from the database."""
+        return await self.fetchrow('''
+            SELECT * FROM guilds WHERE guild_id = $1
+        ''', guild_id)
+    
+    async def remove_guild(self, guild_id: int) -> None:
+        """Remove a guild and related records from the database."""
+        # First, remove any user_guilds entries (due to foreign key constraints)
+        await self.execute('''
+            DELETE FROM user_guilds WHERE guild_id = $1
+        ''', guild_id)
+        
+        # Then, remove the guild itself
+        await self.execute('''
+            DELETE FROM guilds WHERE guild_id = $1
+        ''', guild_id)
+
     # Guild-specific methods
     async def add_guild_setup(self, guild_id: int, engineer_channel_id: int) -> None:
         """Add a new guild to the database."""
         await self.execute('''
-            INSERT INTO guilds (guild_id, engineer_channel_id)
-            VALUES ($1, $2)
+            INSERT INTO guilds (guild_id, engineer_channel_id, setup)
+            VALUES ($1, $2, $3)
             ON CONFLICT (guild_id) DO UPDATE
-            SET engineer_channel_id = $2
-        ''', guild_id, engineer_channel_id)
+            SET engineer_channel_id = $2, setup = $3
+        ''', guild_id, engineer_channel_id, True)

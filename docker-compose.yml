@@ -26,22 +26,22 @@ services:
       timeout: 2s
       retries: 5
     restart: unless-stopped
-  #   ports:
-  #     - "5432:5432"  # Add port mapping for pgAdmin access
+    ports:
+      - "5432:5432"  # Add port mapping for pgAdmin access
 
-  # pgadmin:
-  #   image: dpage/pgadmin4
-  #   environment:
-  #     PGADMIN_DEFAULT_EMAIL: "admin@admin.com"
-  #     PGADMIN_DEFAULT_PASSWORD: "admin"
-  #   # volumes:
-  #   #   - pgadmin_data:/var/lib/pgadmin
-  #   ports:
-  #     - "5050:80"
-  #   networks:
-  #     - bot-net
-  #   depends_on:
-  #     - postgres
+  pgadmin:
+    image: dpage/pgadmin4
+    environment:
+      PGADMIN_DEFAULT_EMAIL: "admin@admin.com"
+      PGADMIN_DEFAULT_PASSWORD: "admin"
+    # volumes:
+    #   - pgadmin_data:/var/lib/pgadmin
+    ports:
+      - "5050:80"
+    networks:
+      - bot-net
+    depends_on:
+      - postgres
 
 volumes:
   postgres_data:
