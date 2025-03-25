@@ -44,21 +44,25 @@ class Setup(commands.Cog):
                 await interaction.followup.send(f"Error deleting channel: {e}")
                 return
         
-        # Delete guild from the database
-        await db.remove_guild(guild_id)
+        # Use safe_exit to remove guild data from the database
+        success = await db.safe_exit(guild_id)
+        if not success:
+            await interaction.followup.send("Failed to clean up database entries properly.")
+            return
+        
+        await interaction.followup.send("Setup cancelled. I'll be leaving the server now.")
         
         # Wait a short time to ensure the message is sent
         await asyncio.sleep(2)
         
         # Store a reference to the guild before leaving
         guild = interaction.guild
-
         await guild.leave()
 
     @app_commands.command(name="setup", description="Begins the setup process")
     @app_commands.checks.has_permissions(administrator=True)
     async def setup_command(self, interaction: discord.Interaction):
-        await interaction.response.send_message("Setup process initiated. Please follow the instructions.", ephemeral=True)
+        
     
 async def setup(bot):
     await bot.add_cog(Setup(bot))

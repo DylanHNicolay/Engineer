@@ -52,13 +52,33 @@ class DatabaseInterface:
         await self.execute('''
             DELETE FROM guilds WHERE guild_id = $1
         ''', guild_id)
+        
+    async def safe_exit(self, guild_id: int) -> bool:
+        """
+        Safely removes guild and its associations from the database.
+        Returns True if successful, False otherwise.
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                async with conn.transaction():
+                    # First, remove any user_guilds entries (due to foreign key constraints)
+                    await conn.execute('DELETE FROM user_guilds WHERE guild_id = $1', guild_id)
+                    
+                    # Then, remove the guild itself
+                    await conn.execute('DELETE FROM guilds WHERE guild_id = $1', guild_id)
+                    
+                    self.log.info(f"Successfully removed guild {guild_id} and its associations from database")
+                    return True
+        except Exception as e:
+            self.log.error(f"Error during safe_exit for guild {guild_id}: {e}")
+            return False
 
     # Guild-specific methods
-    async def add_guild_setup(self, guild_id: int, engineer_channel_id: int) -> None:
+    async def add_guild_setup(self, guild_id: int, engineer_channel_id: int, engineer_role_id: int = None) -> None:
         """Add a new guild to the database."""
         await self.execute('''
-            INSERT INTO guilds (guild_id, engineer_channel_id, setup)
-            VALUES ($1, $2, $3)
+            INSERT INTO guilds (guild_id, engineer_channel_id, engineer_role_id, setup)
+            VALUES ($1, $2, $3, $4)
             ON CONFLICT (guild_id) DO UPDATE
-            SET engineer_channel_id = $2, setup = $3
-        ''', guild_id, engineer_channel_id, True)
+            SET engineer_channel_id = $2, engineer_role_id = $3, setup = $4
+        ''', guild_id, engineer_channel_id, engineer_role_id, True)
