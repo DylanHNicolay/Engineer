@@ -1,3 +1,8 @@
+"""
+TODO
+Ensure role_listener meets the rep invariant
+"""
+
 import discord
 from discord.ext import commands
 import asyncpg
