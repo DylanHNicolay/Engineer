@@ -82,3 +82,33 @@ class DatabaseInterface:
             ON CONFLICT (guild_id) DO UPDATE
             SET engineer_channel_id = $2, engineer_role_id = $3, setup = $4
         ''', guild_id, engineer_channel_id, engineer_role_id, True)
+
+    async def get_all_guild_ids(self) -> List[int]:
+        """Get all guild IDs from the database."""
+        records = await self.fetch('SELECT guild_id FROM guilds')
+        return [record['guild_id'] for record in records]
+
+    async def get_all_guilds(self) -> List[asyncpg.Record]:
+        """Get all guild records from the database."""
+        return await self.fetch('SELECT * FROM guilds')
+        
+    async def update_guild_channel(self, guild_id: int, channel_id: int) -> None:
+        """Update the engineer channel ID for a guild."""
+        await self.execute(
+            'UPDATE guilds SET engineer_channel_id = $1 WHERE guild_id = $2',
+            channel_id, guild_id
+        )
+        
+    async def update_guild_role(self, guild_id: int, role_id: int) -> None:
+        """Update the engineer role ID for a guild."""
+        await self.execute(
+            'UPDATE guilds SET engineer_role_id = $1 WHERE guild_id = $2',
+            role_id, guild_id
+        )
+        
+    async def set_guild_setup_required(self, guild_id: int) -> None:
+        """Reset a guild to setup mode."""
+        await self.execute(
+            'UPDATE guilds SET setup = TRUE WHERE guild_id = $1',
+            guild_id
+        )
