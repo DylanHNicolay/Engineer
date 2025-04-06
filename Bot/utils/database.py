@@ -82,3 +82,11 @@ class DatabaseInterface:
             ON CONFLICT (guild_id) DO UPDATE
             SET engineer_channel_id = $2, engineer_role_id = $3, setup = $4
         ''', guild_id, engineer_channel_id, engineer_role_id, True)
+
+    async def get_engineer_role_id(self, guild_id: int) -> Optional[int]:
+        """Get the engineer role ID for a guild."""
+        guild_data = await self.fetchrow('''
+            SELECT engineer_role_id FROM guilds WHERE guild_id = $1
+        ''', guild_id)
+        
+        return guild_data['engineer_role_id'] if guild_data else None

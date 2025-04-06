@@ -93,26 +93,11 @@ class Setup(commands.Cog):
             
         # Check if Engineer role is at the top using the utility function
         if is_role_at_top(guild, engineer_role_id):
-            # Engineer is the top role, enable simplified role listener cog
-            try:
-                # Try to load the role_listener cog if not already loaded
-                try:
-                    await self.bot.load_extension("cogs.role_listener")
-                except commands.ExtensionAlreadyLoaded:
-                    pass
-                
-                # Get the role_listener cog
-                role_listener_cog = self.bot.get_cog("RoleListener")
-                if role_listener_cog:
-                    # Enable monitoring for this guild
-                    role_listener_cog.add_monitored_guild(guild_id, engineer_role_id)
-                    
-                    # Continue with setup
-                    await interaction.followup.send("Engineer is the top role. Setup is proceeding.")
-                else:
-                    await interaction.followup.send("Failed to initialize role monitoring.")
-            except Exception as e:
-                await interaction.followup.send(f"Error enabling role monitoring: {str(e)}")
+            # Engineer is the top role, proceed with setup
+            # Here we could mark the guild as setup=False in the database if needed
+            await interaction.followup.send("Engineer is the top role. Setup is complete!")
+            
+            # Additional setup steps could go here
         else:
             # Engineer is not the top role
             await interaction.followup.send("Engineer must be the **top level role** in your server. Please move it to the top and try again.")

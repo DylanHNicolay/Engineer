@@ -36,6 +36,15 @@ class EngineerBot(commands.Bot):
         except commands.ExtensionAlreadyLoaded:
             pass
         
+        # Load the role_listener cog for all guilds
+        try:
+            await self.load_extension("cogs.role_listener")
+            logging.info("Role listener cog loaded successfully")
+        except commands.ExtensionAlreadyLoaded:
+            logging.info("Role listener cog was already loaded")
+        except Exception as e:
+            logging.error(f"Failed to load role_listener cog: {e}")
+        
         # Get all guilds that are in setup mode
         guilds_in_setup = await self.db_interface.fetch('''
             SELECT guild_id FROM guilds WHERE setup = TRUE
