@@ -1,13 +1,13 @@
 import discord
 from discord.ext import commands
 import logging
-from utils.role_utils import is_role_at_top, send_role_position_warning
+from utils.role_channel_utils import is_role_at_top, send_role_position_warning
 
-class RoleListener(commands.Cog):
+class RoleChannelListener(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.logger = logging.getLogger(__name__)
-        self.logger.info("Role listener initialized - monitoring all guilds")
+        self.logger.info("Role channel listener initialized - monitoring all guilds")
     
     async def get_engineer_role_id(self, guild_id: int) -> int:
         """Get the engineer role ID from the database for the specified guild"""
@@ -50,6 +50,11 @@ class RoleListener(commands.Cog):
         if not is_role_at_top(role.guild, engineer_role_id):
             self.logger.warning(f"Engineer role no longer at top after role creation in guild {guild_id}")
             await send_role_position_warning(self.bot, role.guild, engineer_role_id)
+
+    """
+    TODO
+    - As we add more features, we can remove the cogs/other functionality if a role is moved.
+    """
         
 async def setup(bot):
-    await bot.add_cog(RoleListener(bot))
+    await bot.add_cog(RoleChannelListener(bot))

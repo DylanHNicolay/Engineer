@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 import asyncio
-from utils.role_utils import is_role_at_top, send_role_setup_error
+from utils.role_channel_utils import is_role_at_top, send_role_setup_error
 
 class Setup(commands.Cog):
     def __init__(self, bot):
