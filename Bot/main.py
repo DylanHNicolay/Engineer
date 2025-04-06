@@ -36,15 +36,6 @@ class EngineerBot(commands.Bot):
         except commands.ExtensionAlreadyLoaded:
             pass
         
-        # Load the role_listener cog for all guilds
-        try:
-            await self.load_extension("cogs.role_listener")
-            logging.info("Role listener cog loaded successfully")
-        except commands.ExtensionAlreadyLoaded:
-            logging.info("Role listener cog was already loaded")
-        except Exception as e:
-            logging.error(f"Failed to load role_listener cog: {e}")
-        
         # Load the role_channel_listener cog for all guilds
         try:
             await self.load_extension("cogs.role_channel_listener")
@@ -53,6 +44,18 @@ class EngineerBot(commands.Bot):
             logging.info("Role channel listener cog was already loaded")
         except Exception as e:
             logging.error(f"Failed to load role_channel_listener cog: {e}")
+            
+        # Initialize channel monitoring for all guilds
+        role_channel_listener = self.get_cog("RoleChannelListener")
+        if role_channel_listener:
+            logging.info("Starting managed channel verification...")
+            try:
+                await role_channel_listener.initialize_channel_monitoring()
+                logging.info("Managed channel verification complete")
+            except Exception as e:
+                logging.error(f"Error during managed channel verification: {e}")
+        else:
+            logging.warning("Could not initialize channel monitoring: RoleChannelListener cog not found")
         
         # Get all guilds that are in setup mode
         guilds_in_setup = await self.db_interface.fetch('''

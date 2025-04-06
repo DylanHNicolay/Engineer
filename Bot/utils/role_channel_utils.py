@@ -110,3 +110,59 @@ async def send_role_setup_error(guild: discord.Guild, channel_id: int) -> None:
             logger.info(f"Sent role setup error message to channel in guild {guild.id}")
     except Exception as e:
         logger.error(f"Error sending role setup error message: {e}")
+
+async def get_managed_channels(db_interface, guild_id: int) -> dict:
+    """
+    Get all actively managed channel IDs for a guild
+    
+    Args:
+        db_interface: The database interface to use
+        guild_id: The Discord guild ID
+        
+    Returns:
+        dict: {"channel_name": channel_id} mapping of managed channels
+    """
+    guild_data = await db_interface.get_guild_setup(guild_id)
+    
+    if not guild_data:
+        return {}
+        
+    managed_channels = {}
+    
+    # Add engineer channel if it exists
+    if guild_data.get('engineer_channel_id'):
+        managed_channels['engineer'] = guild_data['engineer_channel_id']
+        
+    # Could add other managed channels here as they are added to the bot
+    
+    return managed_channels
+    
+async def is_managed_channel(db_interface, guild_id: int, channel_id: int) -> bool:
+    """
+    Check if a channel is actively managed by the bot
+    
+    Args:
+        db_interface: The database interface to use
+        guild_id: The Discord guild ID
+        channel_id: The channel ID to check
+        
+    Returns:
+        bool: True if the channel is managed, False otherwise
+    """
+    managed_channels = await get_managed_channels(db_interface, guild_id)
+    return channel_id in managed_channels.values()
+
+async def get_channel_type(db_interface, guild_id: int, channel_id: int) -> str:
+    """
+    Get the type of a managed channel
+    
+    Args:
+        db_interface: The database interface to use
+        guild_id: The Discord guild ID
+        channel_id: The channel ID to check
+        
+    Returns:
+        str: The channel type ('engineer', etc.) or 'unknown' if not found
+    """
+    managed_channels = await get_managed_channels(db_interface, guild_id)
+    return next((name for name, id in managed_channels.items() if id == channel_id), "unknown")
