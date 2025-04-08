@@ -1,6 +1,5 @@
 """
-TODO
-Ensure role_listener meets the rep invariant
+Bot entry point - initializes the EngineerBot and manages cog loading
 """
 
 import discord
@@ -80,11 +79,10 @@ class EngineerBot(commands.Bot):
     
     async def on_guild_join(self, guild: discord.Guild):
         """
-        TODO
-        Edge cases:
-        -Maximum number of channels
-        -No engineer role found, two engineer roles found
-        -Error adding to database
+        Handles the bot joining a new guild
+        - Creates an engineer channel
+        - Sets up database entries
+        - Loads the setup command
         """
         try:
             # Check if the bot still has access to the guild
@@ -100,7 +98,7 @@ class EngineerBot(commands.Bot):
             # Create engineer channel with restricted permissions
             overwrites = {
                 guild.default_role: discord.PermissionOverwrite(read_messages=False),
-                guild.me: discord.PermissionOverwrite(read_messages=True),
+                guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True),
                 guild.owner: discord.PermissionOverwrite(read_messages=True)
             }
             

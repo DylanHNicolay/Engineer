@@ -12,14 +12,44 @@ def is_role_at_top(guild: discord.Guild, role_id: int) -> bool:
         role_id: The ID of the role to check
         
     Returns:
-        bool: True if the role is at the top, False otherwise
+        bool: True if the role is the single highest role, False otherwise
     """
+    # Get the role object
+    role = guild.get_role(role_id)
+    if not role:
+        logger.warning(f"Role {role_id} not found in guild {guild.id}")
+        return False
+    
     # Get all roles with position > 0 (excluding @everyone)
-    sorted_roles = sorted([role for role in guild.roles if role.position > 0], 
+    sorted_roles = sorted([r for r in guild.roles if r.position > 0], 
                           key=lambda r: r.position, reverse=True)
     
-    # Check if role is at the top
-    return sorted_roles and sorted_roles[0].id == role_id
+    # Check if role is at the top (and the only one at that position)
+    if not sorted_roles:
+        return False
+        
+    highest_position = sorted_roles[0].position
+    roles_at_top = [r for r in sorted_roles if r.position == highest_position]
+    
+    # True only if this is the only role at the highest position
+    return len(roles_at_top) == 1 and roles_at_top[0].id == role_id
+
+def get_roles_above_engineer(guild: discord.Guild, engineer_role_id: int) -> list:
+    """
+    Get a list of roles that are positioned above the Engineer role.
+    
+    Args:
+        guild: The Discord guild
+        engineer_role_id: The ID of the Engineer role
+        
+    Returns:
+        list: List of role objects that are above the Engineer role
+    """
+    engineer_role = guild.get_role(engineer_role_id)
+    if not engineer_role:
+        return []
+        
+    return [role for role in guild.roles if role.position > engineer_role.position]
 
 async def send_role_position_warning(bot, guild: discord.Guild, engineer_role_id: int, 
                                      channel_id: int = None, dm_admins: bool = True) -> None:
@@ -33,6 +63,12 @@ async def send_role_position_warning(bot, guild: discord.Guild, engineer_role_id
         channel_id: Optional specific channel ID to send to
         dm_admins: Whether to DM server admins
     """
+    roles_above = get_roles_above_engineer(guild, engineer_role_id)
+    roles_text = ""
+    if roles_above:
+        roles_text = "\n\nThe following roles are currently above Engineer:\n"
+        roles_text += "\n".join([f"- {role.name}" for role in roles_above])
+    
     try:
         # If channel_id is not provided, try to get it from the database
         if not channel_id:
@@ -53,7 +89,7 @@ async def send_role_position_warning(bot, guild: discord.Guild, engineer_role_id
                     "1. Go to Server Settings > Roles\n"
                     "2. Drag the 'Engineer' role to the top of the list\n"
                     "3. Click Save Changes\n\n"
-                    "Failing to maintain Engineer as the top role may result in reduced functionality."
+                    "Failing to maintain Engineer as the top role may result in reduced functionality." + roles_text
                 )
                 logger.info(f"Sent role position warning to channel in guild {guild.id}")
             except discord.Forbidden:

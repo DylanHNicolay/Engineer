@@ -3,14 +3,19 @@ from discord.ext import commands
 import logging
 from utils.role_channel_utils import (
     is_role_at_top, send_role_position_warning, get_managed_channels, 
-    is_managed_channel, get_channel_type
+    is_managed_channel, get_channel_type, get_roles_above_engineer
 )
+import asyncio
 
 class RoleChannelListener(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.logger = logging.getLogger(__name__)
         self.logger.info("Role channel listener initialized - monitoring all guilds")
+        # Track which guilds have had enforcement triggered
+        self.role_enforcement_triggered = set()
+        # Last warning timestamp per guild
+        self.last_warning_time = {}
     
     async def initialize_channel_monitoring(self):
         """
@@ -24,6 +29,11 @@ class RoleChannelListener(commands.Cog):
         for guild in self.bot.guilds:
             try:
                 self.logger.debug(f"Verifying managed channels for guild {guild.id}")
+                
+                # Check Engineer role position first
+                engineer_role_id = await self.get_engineer_role_id(guild.id)
+                if engineer_role_id:
+                    await self.check_engineer_role_position(guild, engineer_role_id)
                 
                 # Get all managed channels for this guild
                 managed_channels = await get_managed_channels(self.bot.db_interface, guild.id)
@@ -66,6 +76,10 @@ class RoleChannelListener(commands.Cog):
             else:
                 # Channel exists, verify permissions
                 bot_member = guild.get_member(self.bot.user.id)
+                if not bot_member:
+                    self.logger.warning(f"Bot not found in guild {guild.id}")
+                    return
+                    
                 channel_perms = channel.permissions_for(bot_member)
                 
                 # Check if bot has required permissions
@@ -78,6 +92,9 @@ class RoleChannelListener(commands.Cog):
                             await channel.set_permissions(bot_member, read_messages=True, send_messages=True,
                                                         reason="Restoring required bot permissions")
                             self.logger.info(f"Restored permissions in {channel_type} channel in guild {guild.id}")
+                        except discord.Forbidden:
+                            self.logger.error(f"No permission to update channel permissions in guild {guild.id}")
+                            await self.notify_owner_about_permissions(guild)
                         except Exception as e:
                             self.logger.error(f"Failed to restore permissions: {e}")
                 
@@ -99,6 +116,9 @@ class RoleChannelListener(commands.Cog):
         
         Args:
             guild: The Discord guild
+            
+        Returns:
+            bool: True if successful, False otherwise
         """
         try:
             self.logger.info(f"Attempting to recreate engineer channel in guild {guild.id}")
@@ -110,29 +130,49 @@ class RoleChannelListener(commands.Cog):
             # Set up permissions
             overwrites = {
                 guild.default_role: discord.PermissionOverwrite(read_messages=False),
-                guild.me: discord.PermissionOverwrite(read_messages=True),
+                guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True),
                 guild.owner: discord.PermissionOverwrite(read_messages=True)
             }
             
             # Add engineer role permissions if it exists
             if engineer_role:
                 overwrites[engineer_role] = discord.PermissionOverwrite(read_messages=True)
-                
-            # Create a new engineer channel
-            new_channel = await guild.create_text_channel('engineer', overwrites=overwrites)
             
+            try:
+                # Create a new engineer channel
+                new_channel = await guild.create_text_channel('engineer', overwrites=overwrites)
+            except discord.Forbidden:
+                self.logger.error(f"Bot doesn't have permissions to create channels in guild {guild.id}")
+                await self.notify_owner_about_channel_creation(guild)
+                return False
+            except Exception as e:
+                self.logger.error(f"Failed to create engineer channel in guild {guild.id}: {e}")
+                return False
+                
             # Update the database with the new channel ID
-            await self.bot.db_interface.execute('''
-                UPDATE guilds SET engineer_channel_id = $1 WHERE guild_id = $2
-            ''', new_channel.id, guild.id)
+            try:
+                await self.bot.db_interface.execute('''
+                    UPDATE guilds SET engineer_channel_id = $1 WHERE guild_id = $2
+                ''', new_channel.id, guild.id)
+            except Exception as e:
+                self.logger.error(f"Failed to update database with new channel ID: {e}")
+                try:
+                    await new_channel.delete(reason="Failed to update database")
+                except:
+                    pass
+                return False
             
             # Send a warning message
-            await new_channel.send(
-                "⚠️ **Notice:** The Engineer channel was missing and has been recreated.\n\n"
-                "This channel is required for proper bot operation. Please do not delete it.\n"
-                "If you want to remove the bot, use `/setup_cancel` instead."
-            )
-            
+            try:
+                await new_channel.send(
+                    "⚠️ **Notice:** The Engineer channel was missing and has been recreated.\n\n"
+                    "This channel is required for proper bot operation. Please do not delete it.\n"
+                    "If you want to remove the bot, use `/setup_cancel` instead."
+                )
+            except Exception as e:
+                self.logger.warning(f"Failed to send message in recreated channel: {e}")
+                # Not critical, continue
+                
             self.logger.info(f"Successfully recreated engineer channel in guild {guild.id}")
             return True
         except Exception as e:
@@ -147,6 +187,65 @@ class RoleChannelListener(commands.Cog):
             return guild_data['engineer_role_id']
         return None
     
+    async def notify_owner_about_permissions(self, guild):
+        """Notify the guild owner about permission issues"""
+        try:
+            await guild.owner.send(
+                f"⚠️ **Important Notice for {guild.name}**\n\n"
+                "Engineer bot doesn't have permission to manage its channel.\n"
+                "Please ensure the bot has 'Manage Channels' and 'Manage Roles' permissions."
+            )
+            self.logger.info(f"Notified owner about permission issues in guild {guild.id}")
+        except:
+            self.logger.warning(f"Failed to notify owner about permission issues in guild {guild.id}")
+            
+    async def notify_owner_about_channel_creation(self, guild):
+        """Notify the guild owner about channel creation issues"""
+        try:
+            await guild.owner.send(
+                f"⚠️ **Important Notice for {guild.name}**\n\n"
+                "Engineer bot couldn't create its required channel.\n"
+                "Please ensure the bot has 'Manage Channels' permissions."
+            )
+            self.logger.info(f"Notified owner about channel creation issues in guild {guild.id}")
+        except:
+            self.logger.warning(f"Failed to notify owner about channel creation issues in guild {guild.id}")
+    
+    async def check_engineer_role_position(self, guild, engineer_role_id):
+        """
+        Check if Engineer role is at the top and take appropriate action
+        
+        Args:
+            guild: Discord guild
+            engineer_role_id: ID of the Engineer role
+        """
+        if not is_role_at_top(guild, engineer_role_id):
+            self.logger.warning(f"Engineer role not at top in guild {guild.id}")
+            
+            # Get engineer channel to send warning
+            guild_data = await self.bot.db_interface.get_guild_setup(guild.id)
+            if not guild_data or not guild_data.get('engineer_channel_id'):
+                return
+                
+            channel_id = guild_data['engineer_channel_id']
+            
+            # Check if we've sent a warning recently (limit to once per 24 hours)
+            current_time = asyncio.get_event_loop().time()
+            if guild.id in self.last_warning_time:
+                if current_time - self.last_warning_time[guild.id] < 86400:  # 24 hours in seconds
+                    return
+                    
+            # Send warning
+            await send_role_position_warning(self.bot, guild, engineer_role_id, channel_id)
+            
+            # Update last warning time
+            self.last_warning_time[guild.id] = current_time
+            
+            # Add to enforcement triggered set if not already there
+            if guild.id not in self.role_enforcement_triggered:
+                self.role_enforcement_triggered.add(guild.id)
+                self.logger.info(f"Added guild {guild.id} to role enforcement triggered set")
+    
     @commands.Cog.listener()
     async def on_guild_role_update(self, before, after):
         """Monitor role position changes for all guilds"""
@@ -155,14 +254,18 @@ class RoleChannelListener(commands.Cog):
         # Get engineer role ID from database
         engineer_role_id = await self.get_engineer_role_id(guild_id)
         
-        # If no engineer role ID found or this isn't the engineer role, ignore
-        if not engineer_role_id or after.id != engineer_role_id:
+        # If no engineer role ID found, ignore
+        if not engineer_role_id:
             return
             
-        # If our role was updated and is no longer at the top
-        if not is_role_at_top(after.guild, engineer_role_id):
-            self.logger.warning(f"Engineer role no longer at top in guild {guild_id}")
-            await send_role_position_warning(self.bot, after.guild, engineer_role_id)
+        # Check if our role was updated
+        if before.id == engineer_role_id or after.id == engineer_role_id:
+            await self.check_engineer_role_position(after.guild, engineer_role_id)
+        # Or if any role was moved above Engineer
+        else:
+            engineer_role = after.guild.get_role(engineer_role_id)
+            if engineer_role and after.position > engineer_role.position:
+                await self.check_engineer_role_position(after.guild, engineer_role_id)
             
     @commands.Cog.listener()
     async def on_guild_role_create(self, role):
@@ -176,10 +279,8 @@ class RoleChannelListener(commands.Cog):
         if not engineer_role_id:
             return
             
-        # Check if Engineer is still at the top after new role creation
-        if not is_role_at_top(role.guild, engineer_role_id):
-            self.logger.warning(f"Engineer role no longer at top after role creation in guild {guild_id}")
-            await send_role_position_warning(self.bot, role.guild, engineer_role_id)
+        # Check Engineer position after new role creation
+        await self.check_engineer_role_position(role.guild, engineer_role_id)
             
     @commands.Cog.listener()
     async def on_guild_channel_delete(self, channel):
@@ -195,40 +296,9 @@ class RoleChannelListener(commands.Cog):
             
             if channel_type == "engineer":
                 # This was the engineer channel - recreate it
-                try:
-                    # Get the engineer role ID
-                    engineer_role_id = await self.get_engineer_role_id(guild_id)
-                    engineer_role = channel.guild.get_role(engineer_role_id) if engineer_role_id else None
-                    
-                    # Set up permissions
-                    overwrites = {
-                        channel.guild.default_role: discord.PermissionOverwrite(read_messages=False),
-                        channel.guild.me: discord.PermissionOverwrite(read_messages=True),
-                        channel.guild.owner: discord.PermissionOverwrite(read_messages=True)
-                    }
-                    
-                    # Add engineer role permissions if it exists
-                    if engineer_role:
-                        overwrites[engineer_role] = discord.PermissionOverwrite(read_messages=True)
-                        
-                    # Create a new engineer channel
-                    new_channel = await channel.guild.create_text_channel('engineer', overwrites=overwrites)
-                    
-                    # Update the database with the new channel ID
-                    await self.bot.db_interface.execute('''
-                        UPDATE guilds SET engineer_channel_id = $1 WHERE guild_id = $2
-                    ''', new_channel.id, guild_id)
-                    
-                    # Send a warning message
-                    await new_channel.send(
-                        "⚠️ **Warning:** The Engineer channel was deleted and has been recreated.\n\n"
-                        "This channel is required for proper bot operation. Please do not delete it.\n"
-                        "If you want to remove the bot, use `/setup_cancel` instead."
-                    )
-                    
-                    self.logger.info(f"Recreated engineer channel in guild {guild_id}")
-                except Exception as e:
-                    self.logger.error(f"Failed to recreate engineer channel in guild {guild_id}: {e}")
+                success = await self.recreate_engineer_channel(channel.guild)
+                
+                if not success:
                     # Attempt to notify server owner via DM
                     try:
                         owner = channel.guild.owner
@@ -236,7 +306,7 @@ class RoleChannelListener(commands.Cog):
                             f"⚠️ **Warning for {channel.guild.name}:**\n\n"
                             "The Engineer channel was deleted, and I was unable to recreate it.\n"
                             "This channel is required for proper bot operation.\n\n"
-                            "Please reinvite the bot or contact support."
+                            "Please ensure I have the Manage Channels permission and reinvite the bot if needed."
                         )
                     except:
                         pass
@@ -252,19 +322,21 @@ class RoleChannelListener(commands.Cog):
             
         # Check for permission changes that would affect the bot
         bot_member = before.guild.get_member(self.bot.user.id)
-        
+        if not bot_member:
+            return
+            
         # Compare bot permissions before and after
         before_perms = before.permissions_for(bot_member)
         after_perms = after.permissions_for(bot_member)
+        
+        # Get which type of managed channel it was
+        channel_type = await get_channel_type(self.bot.db_interface, guild_id, before.id)
         
         # Check if the bot lost critical permissions
         if before_perms.read_messages and not after_perms.read_messages or \
            before_perms.send_messages and not after_perms.send_messages:
             
             self.logger.warning(f"Bot lost permissions in managed channel {before.id} in guild {guild_id}")
-            
-            # Get which type of managed channel it was
-            channel_type = await get_channel_type(self.bot.db_interface, guild_id, before.id)
             
             if channel_type == "engineer":
                 # Try to notify server owner via DM about the issue
@@ -305,11 +377,30 @@ class RoleChannelListener(commands.Cog):
                 self.logger.info(f"Restored engineer channel name in guild {guild_id}")
             except Exception as e:
                 self.logger.error(f"Failed to restore engineer channel name in guild {guild_id}: {e}")
-
-    """
-    TODO
-    - As we add more features, we can remove the cogs/other functionality if a role is moved.
-    """
+                
+    # Run periodic role position check every 6 hours
+    @commands.Cog.listener()
+    async def on_ready(self):
+        """Schedule periodic role position checks"""
+        self.bot.loop.create_task(self.periodic_role_check())
+        
+    async def periodic_role_check(self):
+        """Periodically check all guilds' Engineer role position"""
+        await asyncio.sleep(600)  # Initial delay of 10 minutes after bot start
+        
+        while not self.bot.is_closed():
+            self.logger.info("Running periodic role position check")
+            
+            for guild in self.bot.guilds:
+                try:
+                    engineer_role_id = await self.get_engineer_role_id(guild.id)
+                    if engineer_role_id:
+                        await self.check_engineer_role_position(guild, engineer_role_id)
+                except Exception as e:
+                    self.logger.error(f"Error in periodic role check for guild {guild.id}: {e}")
+                    
+            # Run every 6 hours
+            await asyncio.sleep(6 * 60 * 60)
         
 async def setup(bot):
     await bot.add_cog(RoleChannelListener(bot))
