@@ -82,6 +82,15 @@ class DatabaseInterface:
             self.log.error(f"Database direct fetchrow error: {e}")
             raise
 
+    async def _fetchval_direct(self, query: str, *args) -> Any:
+        """Fetch a single value directly without queueing (for internal use)"""
+        try:
+            async with self.pool.acquire() as conn:
+                return await conn.fetchval(query, *args)
+        except Exception as e:
+            self.log.error(f"Database direct fetchval error: {e}")
+            raise
+
     async def execute(self, query: str, *args) -> str:
         """Execute a SQL query safely, in order."""
         return await self._queue_operation(self._execute_direct, query, *args)
@@ -93,6 +102,10 @@ class DatabaseInterface:
     async def fetchrow(self, query: str, *args) -> Optional[asyncpg.Record]:
         """Fetch a single row from a query, in order."""
         return await self._queue_operation(self._fetchrow_direct, query, *args)
+
+    async def fetchval(self, query: str, *args) -> Any:
+        """Fetch a single value from a query, in order."""
+        return await self._queue_operation(self._fetchval_direct, query, *args)
 
     async def execute_transaction(self, operations):
         """Execute multiple operations in a single transaction"""

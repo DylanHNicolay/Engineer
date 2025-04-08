@@ -52,7 +52,7 @@ def get_roles_above_engineer(guild: discord.Guild, engineer_role_id: int) -> lis
     return [role for role in guild.roles if role.position > engineer_role.position]
 
 async def send_role_position_warning(bot, guild: discord.Guild, engineer_role_id: int, 
-                                     channel_id: int = None, dm_admins: bool = True) -> None:
+                                     channel_id: int = None, dm_admins: bool = True) -> bool:
     """
     Send warning messages about role position.
     
@@ -62,12 +62,18 @@ async def send_role_position_warning(bot, guild: discord.Guild, engineer_role_id
         engineer_role_id: The ID of the Engineer role
         channel_id: Optional specific channel ID to send to
         dm_admins: Whether to DM server admins
+        
+    Returns:
+        bool: True if warning was sent successfully, False otherwise
     """
     roles_above = get_roles_above_engineer(guild, engineer_role_id)
     roles_text = ""
     if roles_above:
         roles_text = "\n\nThe following roles are currently above Engineer:\n"
         roles_text += "\n".join([f"- {role.name}" for role in roles_above])
+    
+    channel_message_sent = False
+    dm_message_sent = False
     
     try:
         # If channel_id is not provided, try to get it from the database
@@ -77,7 +83,7 @@ async def send_role_position_warning(bot, guild: discord.Guild, engineer_role_id
                 channel_id = guild_data['engineer_channel_id']
             else:
                 logger.warning(f"Cannot send role position warning - no engineer channel found for guild {guild.id}")
-                return
+                return False
         
         # Send warning to the engineer channel
         channel = guild.get_channel(channel_id)
@@ -92,10 +98,13 @@ async def send_role_position_warning(bot, guild: discord.Guild, engineer_role_id
                     "Failing to maintain Engineer as the top role may result in reduced functionality." + roles_text
                 )
                 logger.info(f"Sent role position warning to channel in guild {guild.id}")
+                channel_message_sent = True
             except discord.Forbidden:
                 logger.error(f"No permission to send message to engineer channel in guild {guild.id}")
             except Exception as e:
                 logger.error(f"Error sending message to engineer channel: {e}")
+        else:
+            logger.error(f"Engineer channel {channel_id} not found in guild {guild.id}")
         
         # Send DMs to admins if requested
         if dm_admins:
@@ -104,25 +113,32 @@ async def send_role_position_warning(bot, guild: discord.Guild, engineer_role_id
                 # Check if member is an admin (has administrator permission)
                 if member.guild_permissions.administrator and not member.bot:
                     try:
-                        # Send DM to admin
+                        # Send DM to admin with roles_text included
                         await member.send(
                             f"⚠️ **Important Notice for {guild.name}**\n\n"
                             "The Engineer role is no longer the top role in your server.\n"
                             "This can cause functionality issues with the Engineer bot.\n\n"
                             "Please move the Engineer role back to the top position in your server settings."
+                            f"{roles_text}"
                         )
                         admin_dm_count += 1
+                        logger.debug(f"Sent DM to admin {member.id} in guild {guild.id}")
                     except discord.Forbidden:
                         # Can't DM this user
-                        pass
+                        logger.debug(f"Cannot send DM to admin {member.id} (DMs disabled)")
                     except Exception as e:
                         logger.error(f"Error sending DM to admin {member.id}: {e}")
             
             if admin_dm_count > 0:
                 logger.info(f"Sent role position warning DMs to {admin_dm_count} admins in guild {guild.id}")
+                dm_message_sent = True
+        
+        # Return True if either channel message or DM was sent
+        return channel_message_sent or dm_message_sent
     
     except Exception as e:
         logger.error(f"Error in send_role_position_warning: {e}")
+        return False
 
 async def send_role_setup_error(guild: discord.Guild, channel_id: int) -> None:
     """

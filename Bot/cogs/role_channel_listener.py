@@ -12,10 +12,7 @@ class RoleChannelListener(commands.Cog):
         self.bot = bot
         self.logger = logging.getLogger(__name__)
         self.logger.info("Role channel listener initialized - monitoring all guilds")
-        # Track which guilds have had enforcement triggered
-        self.role_enforcement_triggered = set()
-        # Last warning timestamp per guild
-        self.last_warning_time = {}
+        # No need to store state in memory, we'll use the database
     
     async def initialize_channel_monitoring(self):
         """
@@ -225,26 +222,92 @@ class RoleChannelListener(commands.Cog):
             # Get engineer channel to send warning
             guild_data = await self.bot.db_interface.get_guild_setup(guild.id)
             if not guild_data or not guild_data.get('engineer_channel_id'):
+                self.logger.error(f"No engineer channel found for guild {guild.id}")
                 return
                 
             channel_id = guild_data['engineer_channel_id']
             
             # Check if we've sent a warning recently (limit to once per 24 hours)
             current_time = asyncio.get_event_loop().time()
-            if guild.id in self.last_warning_time:
-                if current_time - self.last_warning_time[guild.id] < 86400:  # 24 hours in seconds
+            
+            # Get the last warning time from database instead of memory
+            try:
+                last_warning_time = await self.bot.db_interface.fetchval(
+                    "SELECT last_warning_time FROM guilds WHERE guild_id = $1",
+                    guild.id
+                ) or 0
+                
+                self.logger.debug(f"Last warning time from DB for guild {guild.id}: {last_warning_time}")
+                
+                if current_time - last_warning_time < 86400:  # 24 hours in seconds
+                    self.logger.debug(f"Warning cooldown in effect for guild {guild.id}, skipping warning")
                     return
+            except Exception as e:
+                self.logger.error(f"Error retrieving last warning time for guild {guild.id}: {e}")
+                return
                     
-            # Send warning
-            await send_role_position_warning(self.bot, guild, engineer_role_id, channel_id)
+            # Get the roles above for debugging
+            roles_above = get_roles_above_engineer(guild, engineer_role_id)
+            self.logger.debug(f"Roles above Engineer in guild {guild.id}: {[role.name for role in roles_above]}")
             
-            # Update last warning time
-            self.last_warning_time[guild.id] = current_time
-            
-            # Add to enforcement triggered set if not already there
-            if guild.id not in self.role_enforcement_triggered:
-                self.role_enforcement_triggered.add(guild.id)
-                self.logger.info(f"Added guild {guild.id} to role enforcement triggered set")
+            # Send warning to the engineer channel and admins
+            try:
+                # Check if channel exists
+                channel = guild.get_channel(channel_id)
+                if not channel:
+                    self.logger.error(f"Engineer channel {channel_id} not found in guild {guild.id}")
+                    return
+                
+                # Send warning
+                await send_role_position_warning(self.bot, guild, engineer_role_id, channel_id)
+                self.logger.info(f"Sent role position warning for guild {guild.id}")
+                
+                # Update last warning time in database
+                try:
+                    await self.bot.db_interface.execute(
+                        "UPDATE guilds SET last_warning_time = $1 WHERE guild_id = $2",
+                        current_time, guild.id
+                    )
+                    self.logger.debug(f"Updated last warning time in DB for guild {guild.id} to {current_time}")
+                except Exception as e:
+                    self.logger.error(f"Error updating last warning time for guild {guild.id}: {e}")
+                
+                # Check if role enforcement has been triggered before
+                try:
+                    role_triggered = await self.bot.db_interface.fetchval(
+                        "SELECT role_enforcement_triggered FROM guilds WHERE guild_id = $1",
+                        guild.id
+                    )
+                    
+                    # Set role_enforcement_triggered to True if not already set
+                    if not role_triggered:
+                        await self.bot.db_interface.execute(
+                            "UPDATE guilds SET role_enforcement_triggered = TRUE WHERE guild_id = $1",
+                            guild.id
+                        )
+                        self.logger.info(f"Marked guild {guild.id} as role enforcement triggered in database")
+                except Exception as e:
+                    self.logger.error(f"Error updating role enforcement status for guild {guild.id}: {e}")
+            except Exception as e:
+                self.logger.error(f"Error in role position warning for guild {guild.id}: {e}")
+    
+    async def cleanup_guild(self, guild_id: int):
+        """
+        Clean up any monitoring or state tracking for a guild that's being removed
+        Called before the bot leaves a guild or when setup is canceled
+        
+        Args:
+            guild_id: The Discord guild ID to cleanup
+        """
+        self.logger.info(f"Cleaning up role and channel monitoring for guild {guild_id}")
+        
+        try:
+            # No need to clean up in-memory state since we're using the database
+            # The database records will be removed by safe_exit
+            return True
+        except Exception as e:
+            self.logger.error(f"Error during guild cleanup for {guild_id}: {e}")
+            return False
     
     @commands.Cog.listener()
     async def on_guild_role_update(self, before, after):
