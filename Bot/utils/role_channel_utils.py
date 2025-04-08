@@ -220,3 +220,69 @@ async def get_channel_type(db_interface, guild_id: int, channel_id: int) -> str:
     """
     managed_channels = await get_managed_channels(db_interface, guild_id)
     return next((name for name, id in managed_channels.items() if id == channel_id), "unknown")
+
+# Add utility function for managed roles
+async def get_managed_roles(db_interface, guild_id: int) -> dict:
+    """
+    Get all actively managed role IDs for a guild
+    
+    Args:
+        db_interface: The database interface to use
+        guild_id: The Discord guild ID
+        
+    Returns:
+        dict: {"role_name": role_id} mapping of managed roles
+    """
+    guild_data = await db_interface.get_guild_setup(guild_id)
+    
+    if not guild_data:
+        return {}
+        
+    managed_roles = {}
+    
+    # Add all the managed roles if they exist
+    role_mapping = {
+        'verified_role_id': 'verified',
+        'rpi_admin_role_id': 'rpi_admin',
+        'student_role_id': 'student', 
+        'alumni_role_id': 'alumni',
+        'friend_role_id': 'friend',
+        'prospective_student_role_id': 'prospective_student',
+        'engineer_role_id': 'engineer'
+    }
+    
+    for db_field, role_name in role_mapping.items():
+        if guild_data.get(db_field):
+            managed_roles[role_name] = guild_data[db_field]
+    
+    return managed_roles
+
+async def is_managed_role(db_interface, guild_id: int, role_id: int) -> bool:
+    """
+    Check if a role is actively managed by the bot
+    
+    Args:
+        db_interface: The database interface to use
+        guild_id: The Discord guild ID
+        role_id: The role ID to check
+        
+    Returns:
+        bool: True if the role is managed, False otherwise
+    """
+    managed_roles = await get_managed_roles(db_interface, guild_id)
+    return role_id in managed_roles.values()
+
+async def get_role_type(db_interface, guild_id: int, role_id: int) -> str:
+    """
+    Get the type of a managed role
+    
+    Args:
+        db_interface: The database interface to use
+        guild_id: The Discord guild ID
+        role_id: The role ID to check
+        
+    Returns:
+        str: The role type ('verified', 'student', etc.) or 'unknown' if not found
+    """
+    managed_roles = await get_managed_roles(db_interface, guild_id)
+    return next((name for name, id in managed_roles.items() if id == role_id), "unknown")

@@ -511,6 +511,146 @@ class RoleChannelListener(commands.Cog):
             # Run every 6 hours
             await asyncio.sleep(6 * 60 * 60)
         
+    # Add monitoring for managed roles
+    @commands.Cog.listener()
+    async def on_guild_role_delete(self, role):
+        """Monitor for deletion of managed roles"""
+        guild_id = role.guild.id
+        
+        # Check if this is a managed role
+        if await is_managed_role(self.bot.db_interface, guild_id, role.id):
+            self.logger.warning(f"Managed role {role.id} ({role.name}) was deleted in guild {guild_id}")
+            
+            # Get the role type to check if it's the Engineer role
+            role_type = await get_role_type(self.bot.db_interface, guild_id, role.id)
+            
+            # Special handling for Engineer role deletion - don't try to send messages
+            # as the bot will lose access to the guild when its role is deleted
+            if role_type == "engineer":
+                self.logger.info(f"Engineer role was deleted in guild {guild_id} - bot will be removed from guild")
+                # We don't need to send warning or do anything else, as on_guild_remove will handle cleanup
+                return
+            
+            # For other managed roles, send a warning to the engineer channel
+            try:
+                guild_data = await self.bot.db_interface.get_guild_setup(guild_id)
+                if guild_data and guild_data.get('engineer_channel_id'):
+                    # Check if the bot is still in the guild and has the required permissions
+                    guild = self.bot.get_guild(guild_id)
+                    if not guild:
+                        self.logger.warning(f"Cannot send role deletion warning - bot no longer in guild {guild_id}")
+                        return
+                    
+                    # Get the channel and check permissions before trying to send message
+                    channel = guild.get_channel(guild_data['engineer_channel_id'])
+                    if channel:
+                        # Verify that the bot can send messages to this channel
+                        bot_member = guild.get_member(self.bot.user.id)
+                        if bot_member and channel.permissions_for(bot_member).send_messages:
+                            await channel.send(
+                                f"⚠️ **Warning:** The managed role **{role.name}** was deleted.\n\n"
+                                f"This role is required for proper bot operation. Please run `/setup` again to recreate it."
+                            )
+                        else:
+                            self.logger.warning(f"Bot doesn't have permission to send messages in channel {channel.id} in guild {guild_id}")
+                    else:
+                        self.logger.warning(f"Engineer channel {guild_data['engineer_channel_id']} not found in guild {guild_id}")
+            except Exception as e:
+                self.logger.error(f"Error sending warning about deleted role: {e}")
+        
+async def get_managed_channels(db_interface, guild_id: int) -> dict:
+    """
+    Get all actively managed channel IDs for a guild
+    
+    Args:
+        db_interface: The database interface to use
+        guild_id: The Discord guild ID
+        
+    Returns:
+        dict: {"channel_name": channel_id} mapping of managed channels
+    """
+    guild_data = await db_interface.get_guild_setup(guild_id)
+    
+    if not guild_data:
+        return {}
+        
+    managed_channels = {}
+    
+    # Add engineer channel if it exists
+    if guild_data.get('engineer_channel_id'):
+        managed_channels['engineer'] = guild_data['engineer_channel_id']
+        
+    # Could add other managed channels here as they are added to the bot
+    
+    return managed_channels
+
+# Add a new function to get managed roles
+async def get_managed_roles(db_interface, guild_id: int) -> dict:
+    """
+    Get all actively managed role IDs for a guild
+    
+    Args:
+        db_interface: The database interface to use
+        guild_id: The Discord guild ID
+        
+    Returns:
+        dict: {"role_name": role_id} mapping of managed roles
+    """
+    guild_data = await db_interface.get_guild_setup(guild_id)
+    
+    if not guild_data:
+        return {}
+        
+    managed_roles = {}
+    
+    # Add all the managed roles if they exist
+    role_mapping = {
+        'verified_role_id': 'verified',
+        'rpi_admin_role_id': 'rpi_admin',
+        'student_role_id': 'student',
+        'alumni_role_id': 'alumni',
+        'friend_role_id': 'friend',
+        'prospective_student_role_id': 'prospective_student',
+        'engineer_role_id': 'engineer'
+    }
+    
+    for db_field, role_name in role_mapping.items():
+        if guild_data.get(db_field):
+            managed_roles[role_name] = guild_data[db_field]
+    
+    return managed_roles
+
+# Update the is_managed_channel function to use the map
+async def is_managed_channel(db_interface, guild_id: int, channel_id: int) -> bool:
+    """
+    Check if a channel is actively managed by the bot
+    
+    Args:
+        db_interface: The database interface to use
+        guild_id: The Discord guild ID
+        channel_id: The channel ID to check
+        
+    Returns:
+        bool: True if the channel is managed, False otherwise
+    """
+    managed_channels = await get_managed_channels(db_interface, guild_id)
+    return channel_id in managed_channels.values()
+
+# Add a function to check if a role is managed
+async def is_managed_role(db_interface, guild_id: int, role_id: int) -> bool:
+    """
+    Check if a role is actively managed by the bot
+    
+    Args:
+        db_interface: The database interface to use
+        guild_id: The Discord guild ID
+        role_id: The role ID to check
+        
+    Returns:
+        bool: True if the role is managed, False otherwise
+    """
+    managed_roles = await get_managed_roles(db_interface, guild_id)
+    return role_id in managed_roles.values()
         
 async def setup(bot):
     await bot.add_cog(RoleChannelListener(bot))
