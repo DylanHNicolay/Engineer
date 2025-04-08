@@ -6,13 +6,19 @@ from utils.role_channel_utils import (
     is_managed_channel, get_channel_type, get_roles_above_engineer
 )
 import asyncio
+import time
 
 class RoleChannelListener(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.logger = logging.getLogger(__name__)
         self.logger.info("Role channel listener initialized - monitoring all guilds")
-        # No need to store state in memory, we'll use the database
+        # Add a debounce mechanism to prevent multiple rapid checks
+        self.role_check_debounce = {}
+        # Debounce time in seconds
+        self.debounce_time = 5
+        # Track channels that are allowed to be deleted (for setup_cancel)
+        self.deletion_allowed = set()
     
     async def initialize_channel_monitoring(self):
         """
@@ -216,6 +222,20 @@ class RoleChannelListener(commands.Cog):
             guild: Discord guild
             engineer_role_id: ID of the Engineer role
         """
+        guild_id = guild.id
+        
+        # Check debounce to prevent multiple rapid checks
+        current_time = time.time()
+        last_check_time = self.role_check_debounce.get(guild_id, 0)
+        
+        # If we've checked recently, skip this check
+        if current_time - last_check_time < self.debounce_time:
+            self.logger.debug(f"Skipping role position check for guild {guild_id} (debounced)")
+            return
+            
+        # Update the debounce timestamp
+        self.role_check_debounce[guild_id] = current_time
+        
         if not is_role_at_top(guild, engineer_role_id):
             self.logger.warning(f"Engineer role not at top in guild {guild.id}")
             
@@ -228,7 +248,7 @@ class RoleChannelListener(commands.Cog):
             channel_id = guild_data['engineer_channel_id']
             
             # Check if we've sent a warning recently (limit to once per 24 hours)
-            current_time = asyncio.get_event_loop().time()
+            current_db_time = asyncio.get_event_loop().time()
             
             # Get the last warning time from database instead of memory
             try:
@@ -239,7 +259,7 @@ class RoleChannelListener(commands.Cog):
                 
                 self.logger.debug(f"Last warning time from DB for guild {guild.id}: {last_warning_time}")
                 
-                if current_time - last_warning_time < 86400:  # 24 hours in seconds
+                if current_db_time - last_warning_time < 86400:  # 24 hours in seconds
                     self.logger.debug(f"Warning cooldown in effect for guild {guild.id}, skipping warning")
                     return
             except Exception as e:
@@ -266,9 +286,9 @@ class RoleChannelListener(commands.Cog):
                 try:
                     await self.bot.db_interface.execute(
                         "UPDATE guilds SET last_warning_time = $1 WHERE guild_id = $2",
-                        current_time, guild.id
+                        current_db_time, guild.id
                     )
-                    self.logger.debug(f"Updated last warning time in DB for guild {guild.id} to {current_time}")
+                    self.logger.debug(f"Updated last warning time in DB for guild {guild.id} to {current_db_time}")
                 except Exception as e:
                     self.logger.error(f"Error updating last warning time for guild {guild.id}: {e}")
                 
@@ -309,6 +329,27 @@ class RoleChannelListener(commands.Cog):
             self.logger.error(f"Error during guild cleanup for {guild_id}: {e}")
             return False
     
+    async def allow_channel_deletion(self, channel_id: int, duration: int = 10) -> None:
+        """
+        Temporarily allow a channel to be deleted without triggering recreation
+        
+        Args:
+            channel_id: The ID of the channel to allow deletion for
+            duration: How long (in seconds) to allow deletion
+        """
+        self.logger.info(f"Allowing deletion of channel {channel_id} for {duration} seconds")
+        self.deletion_allowed.add(channel_id)
+        
+        # Schedule removal of this permission after the duration
+        async def remove_permission():
+            await asyncio.sleep(duration)
+            if channel_id in self.deletion_allowed:
+                self.deletion_allowed.remove(channel_id)
+                self.logger.debug(f"Deletion permission for channel {channel_id} has expired")
+                
+        # Start the task to remove the permission later
+        asyncio.create_task(remove_permission())
+            
     @commands.Cog.listener()
     async def on_guild_role_update(self, before, after):
         """Monitor role position changes for all guilds"""
@@ -319,6 +360,10 @@ class RoleChannelListener(commands.Cog):
         
         # If no engineer role ID found, ignore
         if not engineer_role_id:
+            return
+            
+        # Only check if positions actually changed
+        if before.position == after.position:
             return
             
         # Check if our role was updated
@@ -352,6 +397,13 @@ class RoleChannelListener(commands.Cog):
         
         # Check if this is a managed channel
         if await is_managed_channel(self.bot.db_interface, guild_id, channel.id):
+            # Check if deletion is explicitly allowed (for setup_cancel)
+            if channel.id in self.deletion_allowed:
+                self.logger.info(f"Channel {channel.id} deletion was allowed, not recreating")
+                # Remove from allowed list immediately to prevent any race conditions
+                self.deletion_allowed.remove(channel.id)
+                return
+                
             self.logger.warning(f"Managed channel {channel.id} was deleted in guild {guild_id}")
             
             # Get which type of managed channel it was
@@ -453,6 +505,9 @@ class RoleChannelListener(commands.Cog):
         
         while not self.bot.is_closed():
             self.logger.info("Running periodic role position check")
+            
+            # Clear the debounce map before doing periodic checks to ensure they run
+            self.role_check_debounce.clear()
             
             for guild in self.bot.guilds:
                 try:

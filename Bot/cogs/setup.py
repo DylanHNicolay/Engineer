@@ -3,10 +3,12 @@ from discord.ext import commands
 from discord import app_commands
 import asyncio
 from utils.role_channel_utils import is_role_at_top, send_role_setup_error, get_roles_above_engineer
+import logging
 
 class Setup(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.logger = logging.getLogger(__name__)
     
     @app_commands.command(name="ping", description="Simple ping command")
     @app_commands.checks.has_permissions(administrator=True)
@@ -28,37 +30,47 @@ class Setup(commands.Cog):
         if guild_data is None:
             await interaction.followup.send("This server is not configured in the database!")
             return
-            
+        
+        # Send the response immediately before potentially long operations
+        await interaction.followup.send("Setup cancellation in progress. The bot will remove the engineer channel and leave the server.")
+        
         # Get the engineer channel
         engineer_channel_id = guild_data['engineer_channel_id']
+        
+        # Store a reference to the guild before any operations that might affect our access
+        guild = interaction.guild
         
         # Try to delete the channel
         if engineer_channel_id:
             try:
-                channel = interaction.guild.get_channel(engineer_channel_id)
+                channel = guild.get_channel(engineer_channel_id)
                 if channel:
+                    # Allow the channel to be deleted by telling the listener to ignore it
+                    role_channel_listener = self.bot.get_cog("RoleChannelListener")
+                    if role_channel_listener:
+                        # Allow deletion for 10 seconds
+                        await role_channel_listener.allow_channel_deletion(engineer_channel_id, 10)
+                    
+                    # Now proceed with deleting the channel
                     await channel.delete(reason="Setup cancelled")
             except discord.Forbidden:
-                await interaction.followup.send("I don't have permission to delete the engineer channel.")
-                return
+                self.logger.error(f"No permission to delete engineer channel in guild {guild_id}")
             except Exception as e:
-                await interaction.followup.send(f"Error deleting channel: {e}")
-                return
+                self.logger.error(f"Error deleting channel in guild {guild_id}: {e}")
         
         # Use safe_exit to remove guild data from the database
         success = await db.safe_exit(guild_id)
         if not success:
-            await interaction.followup.send("Failed to clean up database entries properly.")
-            return
+            self.logger.error(f"Failed to clean up database entries for guild {guild_id}")
         
-        await interaction.followup.send("Setup cancelled. I'll be leaving the server now.")
+        # Wait a short time to ensure database operations complete
+        await asyncio.sleep(1)
         
-        # Wait a short time to ensure the message is sent
-        await asyncio.sleep(2)
-        
-        # Store a reference to the guild before leaving
-        guild = interaction.guild
-        await guild.leave()
+        try:
+            # Leave the guild
+            await guild.leave()
+        except Exception as e:
+            self.logger.error(f"Error leaving guild {guild_id}: {e}")
 
     @app_commands.command(name="setup", description="Begins the setup process")
     @app_commands.checks.has_permissions(administrator=True)
