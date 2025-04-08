@@ -132,6 +132,8 @@ async def send_role_position_warning(bot, guild: discord.Guild, engineer_role_id
             if admin_dm_count > 0:
                 logger.info(f"Sent role position warning DMs to {admin_dm_count} admins in guild {guild.id}")
                 dm_message_sent = True
+            else:
+                logger.warning(f"Found no admins to send DMs to in guild {guild.id}")
         
         # Return True if either channel message or DM was sent
         return channel_message_sent or dm_message_sent

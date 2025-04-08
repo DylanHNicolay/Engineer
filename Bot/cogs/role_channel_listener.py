@@ -214,13 +214,14 @@ class RoleChannelListener(commands.Cog):
         except:
             self.logger.warning(f"Failed to notify owner about channel creation issues in guild {guild.id}")
     
-    async def check_engineer_role_position(self, guild, engineer_role_id):
+    async def check_engineer_role_position(self, guild, engineer_role_id, force_warning=False):
         """
         Check if Engineer role is at the top and take appropriate action
         
         Args:
             guild: Discord guild
             engineer_role_id: ID of the Engineer role
+            force_warning: If True, send warning regardless of cooldown
         """
         guild_id = guild.id
         
@@ -229,7 +230,7 @@ class RoleChannelListener(commands.Cog):
         last_check_time = self.role_check_debounce.get(guild_id, 0)
         
         # If we've checked recently, skip this check
-        if current_time - last_check_time < self.debounce_time:
+        if not force_warning and current_time - last_check_time < self.debounce_time:
             self.logger.debug(f"Skipping role position check for guild {guild_id} (debounced)")
             return
             
@@ -247,28 +248,13 @@ class RoleChannelListener(commands.Cog):
                 
             channel_id = guild_data['engineer_channel_id']
             
-            # Check if we've sent a warning recently (limit to once per 24 hours)
-            current_db_time = asyncio.get_event_loop().time()
+            # Get the current time for recording warning time
+            current_db_time = int(time.time())
             
-            # Get the last warning time from database instead of memory
-            try:
-                last_warning_time = await self.bot.db_interface.fetchval(
-                    "SELECT last_warning_time FROM guilds WHERE guild_id = $1",
-                    guild.id
-                ) or 0
-                
-                self.logger.debug(f"Last warning time from DB for guild {guild.id}: {last_warning_time}")
-                
-                if current_db_time - last_warning_time < 86400:  # 24 hours in seconds
-                    self.logger.debug(f"Warning cooldown in effect for guild {guild.id}, skipping warning")
-                    return
-            except Exception as e:
-                self.logger.error(f"Error retrieving last warning time for guild {guild.id}: {e}")
-                return
-                    
             # Get the roles above for debugging
             roles_above = get_roles_above_engineer(guild, engineer_role_id)
-            self.logger.debug(f"Roles above Engineer in guild {guild.id}: {[role.name for role in roles_above]}")
+            roles_names = [role.name for role in roles_above]
+            self.logger.info(f"Roles above Engineer in guild {guild.id}: {roles_names}")
             
             # Send warning to the engineer channel and admins
             try:
@@ -278,19 +264,24 @@ class RoleChannelListener(commands.Cog):
                     self.logger.error(f"Engineer channel {channel_id} not found in guild {guild.id}")
                     return
                 
-                # Send warning
-                await send_role_position_warning(self.bot, guild, engineer_role_id, channel_id)
-                self.logger.info(f"Sent role position warning for guild {guild.id}")
+                self.logger.info(f"Sending role position warning for guild {guild.id}")
                 
-                # Update last warning time in database
-                try:
-                    await self.bot.db_interface.execute(
-                        "UPDATE guilds SET last_warning_time = $1 WHERE guild_id = $2",
-                        current_db_time, guild.id
-                    )
-                    self.logger.debug(f"Updated last warning time in DB for guild {guild.id} to {current_db_time}")
-                except Exception as e:
-                    self.logger.error(f"Error updating last warning time for guild {guild.id}: {e}")
+                # Send warning
+                warning_sent = await send_role_position_warning(self.bot, guild, engineer_role_id, channel_id)
+                
+                if warning_sent:
+                    self.logger.info(f"Successfully sent role position warning for guild {guild.id}")
+                    
+                    # Update last warning time in database (for record keeping only)
+                    try:
+                        await self.bot.db_interface.execute(
+                            "UPDATE guilds SET last_warning_time = $1 WHERE guild_id = $2",
+                            current_db_time, guild.id
+                        )
+                    except Exception as e:
+                        self.logger.error(f"Error updating last warning time for guild {guild.id}: {e}")
+                else:
+                    self.logger.warning(f"Failed to send warning messages for guild {guild.id}")
                 
                 # Check if role enforcement has been triggered before
                 try:
@@ -519,6 +510,7 @@ class RoleChannelListener(commands.Cog):
                     
             # Run every 6 hours
             await asyncio.sleep(6 * 60 * 60)
+        
         
 async def setup(bot):
     await bot.add_cog(RoleChannelListener(bot))
