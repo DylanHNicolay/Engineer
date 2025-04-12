@@ -463,26 +463,7 @@ class Setup(commands.Cog):
             else:
                 await engineer_channel.send("✅ Successfully updated role information in the database.")
 
-            await engineer_channel.send(
-                f"✋ **Confirmation Required:**\n\n"
-                f"Roles have been configured. The next step is to process all **{guild.member_count}** members in the server:\n"
-                f"- Existing users in the database will have their roles synced.\n"
-                f"- New users will be added to the database and assigned roles based on their current highest priority role (or Verified if none).\n"
-                f"- All users will be added to the `user_guilds` table.\n\n"
-                f"This process can take time. **{interaction.user.mention}, please type any message in this channel within 5 minutes to proceed.**"
-            )
-
-            def check(m):
-                return m.channel == engineer_channel and m.author == interaction.user
-
-            try:
-                confirmation_msg = await self.bot.wait_for('message', check=check, timeout=300.0)
-                await confirmation_msg.add_reaction('👍')
-                await engineer_channel.send("✅ Confirmation received. Proceeding with member processing...")
-            except asyncio.TimeoutError:
-                await engineer_channel.send("❌ **Confirmation timed out.** Member processing cancelled. Run `/setup` again if you wish to complete the process.")
-                await interaction.followup.send("Setup cancelled due to confirmation timeout.")
-                return
+            await engineer_channel.send("⚙️ Proceeding with member processing...")
 
             await self.process_guild_members(guild, engineer_channel, role_ids)
 

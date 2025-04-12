@@ -3,7 +3,8 @@ from discord.ext import commands
 import logging
 from utils.role_channel_utils import (
     is_role_at_top, send_role_position_warning, get_managed_channels, 
-    is_managed_channel, get_channel_type, get_roles_above_engineer
+    is_managed_channel, get_channel_type, get_roles_above_engineer,
+    is_managed_role, get_role_type  # Added get_role_type here
 )
 import asyncio
 import time
