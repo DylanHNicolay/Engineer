@@ -217,20 +217,16 @@ class RoleChannelListener(commands.Cog):
     
     async def check_engineer_role_position(self, guild, engineer_role_id, force_warning=False):
         """
-        Check if Engineer role is at the top and take appropriate action
-        
-        Args:
-            guild: Discord guild
-            engineer_role_id: ID of the Engineer role
-            force_warning: If True, send warning regardless of cooldown
+        Check if Engineer role is at the top and take appropriate action.
+        Resets enforcement flag if the role is moved back to the top.
         """
         guild_id = guild.id
+        db_interface = self.bot.db_interface
         
         # Check debounce to prevent multiple rapid checks
         current_time = time.time()
         last_check_time = self.role_check_debounce.get(guild_id, 0)
         
-        # If we've checked recently, skip this check
         if not force_warning and current_time - last_check_time < self.debounce_time:
             self.logger.debug(f"Skipping role position check for guild {guild_id} (debounced)")
             return
@@ -238,44 +234,67 @@ class RoleChannelListener(commands.Cog):
         # Update the debounce timestamp
         self.role_check_debounce[guild_id] = current_time
         
-        if not is_role_at_top(guild, engineer_role_id):
+        # Check if the role is currently at the top
+        if is_role_at_top(guild, engineer_role_id):
+            # Role is correctly positioned, check if enforcement was previously triggered
+            try:
+                role_triggered = await db_interface.fetchval(
+                    "SELECT role_enforcement_triggered FROM guilds WHERE guild_id = $1",
+                    guild.id
+                )
+                
+                # If enforcement was triggered, reset it
+                if role_triggered:
+                    await db_interface.execute(
+                        "UPDATE guilds SET role_enforcement_triggered = FALSE WHERE guild_id = $1",
+                        guild.id
+                    )
+                    self.logger.info(f"Engineer role is back at the top in guild {guild.id}. Resetting enforcement flag.")
+                    
+                    # Optionally notify the engineer channel
+                    guild_data = await db_interface.get_guild_setup(guild.id)
+                    if guild_data and guild_data.get('engineer_channel_id'):
+                        channel_id = guild_data['engineer_channel_id']
+                        channel = guild.get_channel(channel_id)
+                        if channel:
+                            try:
+                                await channel.send("✅ The Engineer role is correctly positioned at the top. Normal operation restored.")
+                            except discord.Forbidden:
+                                self.logger.warning(f"Missing permission to send role restoration message in guild {guild.id}")
+                            except Exception as e:
+                                self.logger.error(f"Error sending role restoration message in guild {guild.id}: {e}")
+
+            except Exception as e:
+                self.logger.error(f"Error checking/resetting role enforcement status for guild {guild.id}: {e}")
+        
+        else:
+            # Role is NOT at the top, proceed with warning logic
             self.logger.warning(f"Engineer role not at top in guild {guild.id}")
             
-            # Get engineer channel to send warning
-            guild_data = await self.bot.db_interface.get_guild_setup(guild.id)
+            guild_data = await db_interface.get_guild_setup(guild.id)
             if not guild_data or not guild_data.get('engineer_channel_id'):
                 self.logger.error(f"No engineer channel found for guild {guild.id}")
                 return
                 
             channel_id = guild_data['engineer_channel_id']
-            
-            # Get the current time for recording warning time
             current_db_time = int(time.time())
-            
-            # Get the roles above for debugging
             roles_above = get_roles_above_engineer(guild, engineer_role_id)
             roles_names = [role.name for role in roles_above]
             self.logger.info(f"Roles above Engineer in guild {guild.id}: {roles_names}")
             
-            # Send warning to the engineer channel and admins
             try:
-                # Check if channel exists
                 channel = guild.get_channel(channel_id)
                 if not channel:
                     self.logger.error(f"Engineer channel {channel_id} not found in guild {guild.id}")
                     return
                 
                 self.logger.info(f"Sending role position warning for guild {guild.id}")
-                
-                # Send warning
                 warning_sent = await send_role_position_warning(self.bot, guild, engineer_role_id, channel_id)
                 
                 if warning_sent:
                     self.logger.info(f"Successfully sent role position warning for guild {guild.id}")
-                    
-                    # Update last warning time in database (for record keeping only)
                     try:
-                        await self.bot.db_interface.execute(
+                        await db_interface.execute(
                             "UPDATE guilds SET last_warning_time = $1 WHERE guild_id = $2",
                             current_db_time, guild.id
                         )
@@ -284,16 +303,14 @@ class RoleChannelListener(commands.Cog):
                 else:
                     self.logger.warning(f"Failed to send warning messages for guild {guild.id}")
                 
-                # Check if role enforcement has been triggered before
+                # Check if role enforcement has been triggered before and set if not
                 try:
-                    role_triggered = await self.bot.db_interface.fetchval(
+                    role_triggered = await db_interface.fetchval(
                         "SELECT role_enforcement_triggered FROM guilds WHERE guild_id = $1",
                         guild.id
                     )
-                    
-                    # Set role_enforcement_triggered to True if not already set
                     if not role_triggered:
-                        await self.bot.db_interface.execute(
+                        await db_interface.execute(
                             "UPDATE guilds SET role_enforcement_triggered = TRUE WHERE guild_id = $1",
                             guild.id
                         )
