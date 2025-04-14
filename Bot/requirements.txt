@@ -3,3 +3,4 @@ python-dotenv
 asyncpg
 dnspython
 psycopg2-binary
+aiosmtplib

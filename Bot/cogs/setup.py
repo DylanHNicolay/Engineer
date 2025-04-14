@@ -5,6 +5,7 @@ import asyncio
 from utils.role_channel_utils import is_role_at_top, send_role_setup_error, get_roles_above_engineer
 import logging
 import time
+from cogs.verification import VerificationView  # Add this import
 
 class Setup(commands.Cog):
     def __init__(self, bot):
@@ -468,20 +469,100 @@ class Setup(commands.Cog):
             await self.process_guild_members(guild, engineer_channel, role_ids)
 
             try:
-                await db.execute('UPDATE guilds SET setup = FALSE WHERE guild_id = $1', guild_id)
-                
+                # Create verification and modmail channels
+                verification_channel = None
+                modmail_channel = None
+
+                # Create verification channel
+                overwrites = {
+                    guild.default_role: discord.PermissionOverwrite(
+                        read_messages=True,
+                        send_messages=False,
+                        read_message_history=True
+                    ),
+                    guild.me: discord.PermissionOverwrite(
+                        read_messages=True,
+                        send_messages=True,
+                        manage_messages=True,
+                        read_message_history=True
+                    )
+                }
+
+                verification_channel = await guild.create_text_channel(
+                    'verification',
+                    overwrites=overwrites,
+                    reason="Creating verification channel"
+                )
+
+                # Create modmail channel
+                overwrites = {
+                    guild.default_role: discord.PermissionOverwrite(read_messages=False),
+                    guild.me: discord.PermissionOverwrite(
+                        read_messages=True,
+                        send_messages=True,
+                        manage_messages=True,
+                        read_message_history=True
+                    )
+                }
+
+                modmail_channel = await guild.create_text_channel(
+                    'modmail', 
+                    overwrites=overwrites,
+                    reason="Creating modmail channel"
+                )
+
+                # Update database with new channel IDs and mark setup as complete
+                await db.execute('''
+                    UPDATE guilds 
+                    SET setup = FALSE,
+                        verification_channel_id = $1,
+                        modmail_channel_id = $2
+                    WHERE guild_id = $3
+                ''', verification_channel.id, modmail_channel.id, guild_id)
+
+                # Send verification message
+                message = await verification_channel.send(
+                    "**Welcome to the verification system!**\n\n"
+                    "Please select your status below to begin verification:\n\n"
+                    "🎓 **Student** - Current RPI student\n"
+                    "👥 **Friend** - Friend of an existing member\n"
+                    "🎊 **Alumni** - Former RPI student\n"
+                    "🔍 **Prospective Student** - Interested in attending RPI\n\n"
+                    "Click the appropriate button below to start the verification process.",
+                    view=VerificationView()
+                )
+
+                # Store verification message ID
+                await db.execute('''
+                    UPDATE guilds 
+                    SET verification_message_id = $1 
+                    WHERE guild_id = $2
+                ''', message.id, guild_id)
+
+                # Load verification cog
+                try:
+                    await self.bot.load_extension("cogs.verification")
+                except commands.ExtensionAlreadyLoaded:
+                    pass
+                except Exception as e:
+                    self.logger.error(f"Failed to load verification cog: {e}")
+                    await engineer_channel.send("⚠️ Warning: Failed to load verification system. Please contact an administrator.")
+
                 self.bot.tree.clear_commands(guild=discord.Object(id=guild_id))
                 await self.bot.tree.sync(guild=discord.Object(id=guild_id))
-                
+
                 await engineer_channel.send(
                     "🎉 **Setup Completed!** 🎉\n\n"
                     "Engineer has been successfully configured for your server.\n\n"
                     "**What happens now?**\n"
                     "- Engineer role will remain at the top of your role hierarchy.\n"
                     "- The following roles are now actively managed: Verified, RPI Admin, Student, Alumni, Friend, and Prospective Student.\n"
-                    "- This channel will be maintained for administrative purposes.\n"
+                    "- Three channels have been created:\n"
+                    "  • #engineer - Administrative purposes\n"
+                    "  • #verification - Where users can verify their status\n"
+                    "  • #modmail - For alumni verification and support\n"
                     "- Existing members have been processed: roles synced or added based on current status.\n"
-                    "- Users will be able to verify their affiliation with RPI (feature coming soon).\n\n"
+                    "- Users can now verify their affiliation with RPI through the verification system.\n\n"
                     "If you encounter any issues, please contact the developer, Dylan Nicolay through Discord: **nico1ax**"
                 )
                 

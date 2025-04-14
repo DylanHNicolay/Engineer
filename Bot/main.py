@@ -43,6 +43,19 @@ class EngineerBot(commands.Bot):
             logging.info("Role channel listener cog was already loaded")
         except Exception as e:
             logging.error(f"Failed to load role_channel_listener cog: {e}")
+
+        # Load the verification cog for guilds that are not in setup
+        try:
+            guilds_not_in_setup = await self.db_interface.fetch('''
+                SELECT guild_id FROM guilds WHERE setup = FALSE
+            ''')
+            if guilds_not_in_setup:
+                await self.load_extension("cogs.verification")
+                logging.info("Verification cog loaded successfully")
+        except commands.ExtensionAlreadyLoaded:
+            logging.info("Verification cog was already loaded")
+        except Exception as e:
+            logging.error(f"Failed to load verification cog: {e}")
             
         # Initialize channel monitoring for all guilds
         role_channel_listener = self.get_cog("RoleChannelListener")

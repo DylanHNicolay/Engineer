@@ -7,6 +7,13 @@ CREATE TABLE IF NOT EXISTS users (
     prospective BOOLEAN DEFAULT FALSE,
     friend BOOLEAN DEFAULT FALSE,
     rpi_admin BOOLEAN DEFAULT FALSE,
+    rcsid VARCHAR(255),
+    years_remaining INT CHECK (years_remaining >= 0 AND years_remaining <= 8),
+    verification_code INT,
+    verification_type VARCHAR(50),
+    verification_email VARCHAR(255),
+    verification_attempt_count INT DEFAULT 0,
+    last_verification_attempt BIGINT DEFAULT 0,
     CHECK (
         (CASE WHEN student THEN 1 ELSE 0 END +
          CASE WHEN alumni THEN 1 ELSE 0 END +
@@ -33,7 +40,10 @@ CREATE TABLE IF NOT EXISTS guilds (
     rpi_admin_role_id BIGINT,
     engineer_role_id BIGINT,
     last_warning_time BIGINT DEFAULT 0,
-    role_enforcement_triggered BOOLEAN DEFAULT FALSE
+    role_enforcement_triggered BOOLEAN DEFAULT FALSE,
+    verification_channel_id BIGINT,
+    modmail_channel_id BIGINT,
+    verification_message_id BIGINT
 );
 
 -- Add columns if they don't already exist (safe migration)
@@ -54,11 +64,42 @@ BEGIN
     ) THEN
         ALTER TABLE guilds ADD COLUMN role_enforcement_triggered BOOLEAN DEFAULT FALSE;
     END IF;
+
+    -- Add verification-related columns to guilds
+    IF NOT EXISTS (
+        SELECT FROM information_schema.columns 
+        WHERE table_name = 'guilds' AND column_name = 'verification_channel_id'
+    ) THEN
+        ALTER TABLE guilds ADD COLUMN verification_channel_id BIGINT;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT FROM information_schema.columns 
+        WHERE table_name = 'guilds' AND column_name = 'modmail_channel_id'
+    ) THEN
+        ALTER TABLE guilds ADD COLUMN modmail_channel_id BIGINT;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT FROM information_schema.columns 
+        WHERE table_name = 'guilds' AND column_name = 'verification_message_id'
+    ) THEN
+        ALTER TABLE guilds ADD COLUMN verification_message_id BIGINT;
+    END IF;
 END $$;
 
 -- Table to map users to guilds
 CREATE TABLE IF NOT EXISTS user_guilds (
     discord_id BIGINT REFERENCES users(discord_id),
     guild_id BIGINT REFERENCES guilds(guild_id),
+    PRIMARY KEY (discord_id, guild_id)
+);
+
+-- Table for verification cooldowns 
+CREATE TABLE IF NOT EXISTS verification_cooldowns (
+    discord_id BIGINT REFERENCES users(discord_id),
+    guild_id BIGINT REFERENCES guilds(guild_id),
+    last_attempt BIGINT NOT NULL,
+    attempt_count INT DEFAULT 0,
     PRIMARY KEY (discord_id, guild_id)
 );
