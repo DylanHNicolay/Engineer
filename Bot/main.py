@@ -44,18 +44,46 @@ class EngineerBot(commands.Bot):
         except Exception as e:
             logging.error(f"Failed to load role_channel_listener cog: {e}")
 
+        # Load the role_reactions cog for all guilds
+        try:
+            await self.load_extension("cogs.role_reactions")
+            logging.info("Role reactions cog loaded successfully")
+        except commands.ExtensionAlreadyLoaded:
+            logging.info("Role reactions cog was already loaded")
+        except Exception as e:
+            logging.error(f"Failed to load role_reactions cog: {e}")
+
         # Load the verification cog for guilds that are not in setup
+        guilds_not_in_setup = []  # Initialize the list
         try:
             guilds_not_in_setup = await self.db_interface.fetch('''
                 SELECT guild_id FROM guilds WHERE setup = FALSE
             ''')
             if guilds_not_in_setup:
-                await self.load_extension("cogs.verification")
-                logging.info("Verification cog loaded successfully")
-        except commands.ExtensionAlreadyLoaded:
-            logging.info("Verification cog was already loaded")
+                # Load Verification only if needed
+                try:
+                    await self.load_extension("cogs.verification")
+                    logging.info("Verification cog loaded successfully")
+                except commands.ExtensionAlreadyLoaded:
+                    logging.info("Verification cog was already loaded")
+                except Exception as e:
+                    logging.error(f"Failed to load verification cog: {e}")
+
+                # Load RoleManagement only if there are guilds that have completed setup
+                try:
+                    await self.load_extension("cogs.role_management")
+                    logging.info("Role management cog loaded successfully (at least one guild setup)")
+                except commands.ExtensionAlreadyLoaded:
+                    logging.info("Role management cog was already loaded")
+                except ImportError as e:
+                    logging.error(f"Failed to load role_management cog due to missing dependency: {e}")
+                except Exception as e:
+                    logging.error(f"Failed to load role_management cog: {e}")
+            else:
+                logging.info("No guilds found with setup=FALSE. Skipping initial load of Verification and RoleManagement cogs.")
+
         except Exception as e:
-            logging.error(f"Failed to load verification cog: {e}")
+            logging.error(f"Failed to fetch non-setup guilds: {e}")
             
         # Initialize channel monitoring for all guilds
         role_channel_listener = self.get_cog("RoleChannelListener")
@@ -74,17 +102,45 @@ class EngineerBot(commands.Bot):
             SELECT guild_id FROM guilds WHERE setup = TRUE
         ''')
         
-        # Add setup commands to these guilds
+        # Add setup commands to guilds in setup mode
         setup_cog = self.get_cog("Setup")
         if setup_cog:
             for guild_record in guilds_in_setup:
                 guild_id = guild_record['guild_id']
-                logging.info(f"Re-enabling setup for guild {guild_id} marked as setup=True")
+                logging.info(f"Syncing setup commands for guild {guild_id} marked as setup=True")
+                # Clear existing commands first to avoid duplicates if bot restarts
+                self.tree.clear_commands(guild=discord.Object(id=guild_id))
                 for command in setup_cog.walk_app_commands():
                     self.tree.add_command(command, guild=discord.Object(id=guild_id))
                 
                 # Sync the command tree for this guild
                 await self.tree.sync(guild=discord.Object(id=guild_id))
+
+        # Sync commands for guilds NOT in setup mode
+        # This ensures cogs like RoleReactions and Verification are synced for operational guilds
+        if guilds_not_in_setup:  # Check if the list is not empty
+            logging.info(f"Syncing commands for {len(guilds_not_in_setup)} guilds not in setup mode...")
+            for guild_record in guilds_not_in_setup:
+                guild_id = guild_record['guild_id']
+                guild_obj = discord.Object(id=guild_id)
+                # Clear setup commands if any linger (optional, but good practice)
+                self.tree.clear_commands(guild=guild_obj) 
+                # Add commands from all currently loaded cogs (excluding Setup)
+                for cog_name, cog in self.cogs.items():
+                    if cog_name != "Setup":  # Don't add setup commands to non-setup guilds
+                        for command in cog.walk_app_commands():
+                            # Avoid adding commands already added globally or to this guild
+                            if command not in self.tree.get_commands(guild=guild_obj):
+                                self.tree.add_command(command, guild=guild_obj)
+
+                try:
+                    await self.tree.sync(guild=guild_obj)
+                    logging.info(f"Successfully synced commands for guild {guild_id}")
+                except discord.errors.Forbidden:
+                    logging.warning(f"Failed to sync commands for guild {guild_id}: Missing Permissions")
+                except Exception as e:
+                    logging.error(f"Failed to sync commands for guild {guild_id}: {e}")
+            logging.info("Finished syncing commands for non-setup guilds.")
 
     async def on_ready(self):
         print(f'Logged in as {self.user} (ID: {self.user.id})')
@@ -148,25 +204,27 @@ class EngineerBot(commands.Bot):
             if engineer_role_id is None and len(guild.me.roles) > 1:
                 engineer_role_id = guild.me.roles[-1].id  # The bot's highest role
 
-            # Clear the command tree on join
+            # Clear the command tree on join to ensure a clean slate
             self.tree.clear_commands(guild=discord.Object(id=guild.id))
             
             # Add guild to database using the new interface
             await self.db_interface.add_guild_setup(guild.id, engineer_channel.id, engineer_role_id)
             
-            # Ensure the Setup cog and relevant commands are loaded
-            # Only newly joined guilds can have access to the setup cog
+            # Ensure the Setup cog and relevant commands are loaded and synced for the new guild
             try:
                 await self.load_extension("cogs.setup")
             except commands.ExtensionAlreadyLoaded:
                 pass
             
             setup_cog = self.get_cog("Setup")
-            for command in setup_cog.walk_app_commands():
-                self.tree.add_command(command, guild=discord.Object(id=guild.id))
-            
-            await self.tree.sync(guild=discord.Object(id=guild.id))
-            
+            if setup_cog:  # Check if cog loaded successfully
+                for command in setup_cog.walk_app_commands():
+                    self.tree.add_command(command, guild=discord.Object(id=guild.id))
+                
+                await self.tree.sync(guild=discord.Object(id=guild.id))
+            else:
+                logging.error(f"Setup cog not found for guild {guild.id}, cannot sync setup commands.")
+
             # Send a message in the engineer channel with setup instructions
             try:
                 await engineer_channel.send(

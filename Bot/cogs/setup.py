@@ -519,8 +519,9 @@ class Setup(commands.Cog):
                         modmail_channel_id = $2
                     WHERE guild_id = $3
                 ''', verification_channel.id, modmail_channel.id, guild_id)
+                logging.info(f"Marked guild {guild_id} setup as FALSE in database.")
 
-                # Send verification message
+                # Send verification message and store ID
                 message = await verification_channel.send(
                     "**Welcome to the verification system!**\n\n"
                     "Please select your status below to begin verification:\n\n"
@@ -532,24 +533,52 @@ class Setup(commands.Cog):
                     view=VerificationView()
                 )
 
-                # Store verification message ID
                 await db.execute('''
                     UPDATE guilds 
                     SET verification_message_id = $1 
                     WHERE guild_id = $2
                 ''', message.id, guild_id)
 
-                # Load verification cog
-                try:
-                    await self.bot.load_extension("cogs.verification")
-                except commands.ExtensionAlreadyLoaded:
-                    pass
-                except Exception as e:
-                    self.logger.error(f"Failed to load verification cog: {e}")
-                    await engineer_channel.send("⚠️ Warning: Failed to load verification system. Please contact an administrator.")
+                # Load Verification and RoleManagement cogs if not already loaded
+                cogs_to_load = ["cogs.verification", "cogs.role_management"]
+                for cog_path in cogs_to_load:
+                    cog_name = cog_path.split('.')[-1].replace('_', ' ').title().replace(' ', '') # e.g., "Verification", "RoleManagement"
+                    if not self.bot.get_cog(cog_name):
+                        try:
+                            await self.bot.load_extension(cog_path)
+                            logging.info(f"{cog_name} cog loaded for guild {guild_id} after setup.")
+                        except commands.ExtensionAlreadyLoaded:
+                            logging.info(f"{cog_name} cog was already loaded (concurrent setup likely).")
+                        except ImportError as e:
+                             logging.error(f"Failed to load {cog_name} cog for guild {guild_id} due to missing dependency: {e}")
+                             await engineer_channel.send(f"⚠️ Warning: Failed to load {cog_name} system due to missing dependency. Please contact support.")
+                        except Exception as e:
+                            self.logger.error(f"Failed to load {cog_name} cog for guild {guild_id}: {e}")
+                            await engineer_channel.send(f"⚠️ Warning: Failed to load {cog_name} system. Please contact an administrator.")
+                    else:
+                         logging.info(f"{cog_name} cog already loaded for guild {guild_id}.")
 
-                self.bot.tree.clear_commands(guild=discord.Object(id=guild_id))
-                await self.bot.tree.sync(guild=discord.Object(id=guild_id))
+                # Clear setup-specific commands for this guild
+                guild_obj = discord.Object(id=guild_id)
+                self.bot.tree.clear_commands(guild=guild_obj)
+                logging.info(f"Cleared setup commands for guild {guild_id}.")
+
+                # Add commands from all other loaded cogs (Verification, RoleReactions, RoleManagement etc.)
+                logging.info(f"Adding non-setup commands for guild {guild_id}...")
+                for cog_name, cog in self.bot.cogs.items():
+                    if cog_name != "Setup":  # Exclude the Setup cog itself
+                        for command in cog.walk_app_commands():
+                            # Check if command is already added to avoid duplicates
+                            current_guild_commands = self.bot.tree.get_commands(guild=guild_obj)
+                            if command not in current_guild_commands:
+                                self.bot.tree.add_command(command, guild=guild_obj)
+                                logging.debug(f"Added command '{command.name}' from cog '{cog_name}' for guild {guild_id}")
+                            else:
+                                logging.debug(f"Command '{command.name}' from cog '{cog_name}' already added for guild {guild_id}, skipping.")
+                
+                # Sync the newly added commands for this guild
+                await self.bot.tree.sync(guild=guild_obj)
+                logging.info(f"Synced non-setup commands for guild {guild_id}.")
 
                 await engineer_channel.send(
                     "🎉 **Setup Completed!** 🎉\n\n"

@@ -4,3 +4,4 @@ asyncpg
 dnspython
 psycopg2-binary
 aiosmtplib
+pytz
