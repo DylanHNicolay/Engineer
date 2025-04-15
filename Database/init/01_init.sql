@@ -19,11 +19,8 @@ CREATE TABLE IF NOT EXISTS users (
          CASE WHEN alumni THEN 1 ELSE 0 END +
          CASE WHEN prospective THEN 1 ELSE 0 END +
          CASE WHEN friend THEN 1 ELSE 0 END +
-         CASE WHEN rpi_admin THEN 1 ELSE 0 END) <= 1
-    ),
-    CHECK (
-        (student OR alumni OR prospective OR friend OR rpi_admin) = false 
-        OR verified = true
+         CASE WHEN rpi_admin THEN 1 ELSE 0 END +
+         CASE WHEN verified THEN 1 ELSE 0 END) <= 1
     )
 );
 
@@ -43,50 +40,21 @@ CREATE TABLE IF NOT EXISTS guilds (
     role_enforcement_triggered BOOLEAN DEFAULT FALSE,
     verification_channel_id BIGINT,
     modmail_channel_id BIGINT,
-    verification_message_id BIGINT
+    verification_message_id BIGINT,
+    -- New columns for Role Management
+    fall_semester_start TIMESTAMP WITH TIME ZONE,
+    spring_semester_start TIMESTAMP WITH TIME ZONE,
+    last_fall_action_year INT,
+    last_spring_action_year INT,
+    fall_warning_1m_sent_year INT,
+    fall_warning_1w_sent_year INT,
+    fall_warning_1d_sent_year INT,
+    spring_warning_1m_sent_year INT,
+    spring_warning_1w_sent_year INT,
+    spring_warning_1d_sent_year INT,
+    -- New column for Team/Tryouts
+    tryout_manager_role_id BIGINT
 );
-
--- Add columns if they don't already exist (safe migration)
-DO $$
-BEGIN
-    -- Check if last_warning_time column exists
-    IF NOT EXISTS (
-        SELECT FROM information_schema.columns 
-        WHERE table_name = 'guilds' AND column_name = 'last_warning_time'
-    ) THEN
-        ALTER TABLE guilds ADD COLUMN last_warning_time BIGINT DEFAULT 0;
-    END IF;
-
-    -- Check if role_enforcement_triggered column exists
-    IF NOT EXISTS (
-        SELECT FROM information_schema.columns 
-        WHERE table_name = 'guilds' AND column_name = 'role_enforcement_triggered'
-    ) THEN
-        ALTER TABLE guilds ADD COLUMN role_enforcement_triggered BOOLEAN DEFAULT FALSE;
-    END IF;
-
-    -- Add verification-related columns to guilds
-    IF NOT EXISTS (
-        SELECT FROM information_schema.columns 
-        WHERE table_name = 'guilds' AND column_name = 'verification_channel_id'
-    ) THEN
-        ALTER TABLE guilds ADD COLUMN verification_channel_id BIGINT;
-    END IF;
-
-    IF NOT EXISTS (
-        SELECT FROM information_schema.columns 
-        WHERE table_name = 'guilds' AND column_name = 'modmail_channel_id'
-    ) THEN
-        ALTER TABLE guilds ADD COLUMN modmail_channel_id BIGINT;
-    END IF;
-
-    IF NOT EXISTS (
-        SELECT FROM information_schema.columns 
-        WHERE table_name = 'guilds' AND column_name = 'verification_message_id'
-    ) THEN
-        ALTER TABLE guilds ADD COLUMN verification_message_id BIGINT;
-    END IF;
-END $$;
 
 -- Table to map users to guilds
 CREATE TABLE IF NOT EXISTS user_guilds (
@@ -102,4 +70,49 @@ CREATE TABLE IF NOT EXISTS verification_cooldowns (
     last_attempt BIGINT NOT NULL,
     attempt_count INT DEFAULT 0,
     PRIMARY KEY (discord_id, guild_id)
+);
+
+-- Table for role reactions
+CREATE TABLE IF NOT EXISTS role_reactions (
+    id SERIAL PRIMARY KEY,
+    guild_id BIGINT NOT NULL REFERENCES guilds(guild_id),
+    channel_id BIGINT NOT NULL,
+    message_id BIGINT NOT NULL,
+    emoji TEXT NOT NULL,
+    role_id BIGINT NOT NULL,
+    UNIQUE(guild_id, message_id, emoji)
+);
+
+-- Table for Tryouts Configuration
+CREATE TABLE IF NOT EXISTS tryouts (
+    tryout_id SERIAL PRIMARY KEY,
+    guild_id BIGINT NOT NULL REFERENCES guilds(guild_id) ON DELETE CASCADE,
+    category_id BIGINT NOT NULL, -- Discord Category ID
+    category_name TEXT NOT NULL, -- Store name for easier lookup/display
+    role_id BIGINT NOT NULL, -- Role assigned to participants
+    role_name TEXT NOT NULL, -- Store name for easier lookup/display
+    team_size INT NOT NULL CHECK (team_size > 0),
+    google_form_link TEXT,
+    google_form_id TEXT, -- Extracted ID
+    is_active BOOLEAN DEFAULT TRUE, -- To easily enable/disable tryouts
+    UNIQUE(guild_id, category_id) -- Only one tryout config per category per guild
+);
+
+-- Table for Tryout Participants
+CREATE TABLE IF NOT EXISTS tryout_participants (
+    participant_id SERIAL PRIMARY KEY,
+    tryout_id INT NOT NULL REFERENCES tryouts(tryout_id) ON DELETE CASCADE,
+    discord_id BIGINT NOT NULL REFERENCES users(discord_id) ON DELETE CASCADE,
+    wins INT DEFAULT 0,
+    losses INT DEFAULT 0,
+    UNIQUE(tryout_id, discord_id) -- User can only participate once per tryout
+);
+
+-- Table for Tryout Match History (Optional but recommended)
+CREATE TABLE IF NOT EXISTS tryout_matches (
+    match_id SERIAL PRIMARY KEY,
+    tryout_id INT NOT NULL REFERENCES tryouts(tryout_id) ON DELETE CASCADE,
+    match_time TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    winning_team_discord_ids BIGINT[],
+    losing_team_discord_ids BIGINT[]
 );
