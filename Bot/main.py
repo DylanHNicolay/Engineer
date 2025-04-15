@@ -79,8 +79,18 @@ class EngineerBot(commands.Bot):
                     logging.error(f"Failed to load role_management cog due to missing dependency: {e}")
                 except Exception as e:
                     logging.error(f"Failed to load role_management cog: {e}")
+
+                # Load Team cog only if there are guilds that have completed setup
+                try:
+                    await self.load_extension("cogs.team")
+                    logging.info("Team cog loaded successfully (at least one guild setup)")
+                except commands.ExtensionAlreadyLoaded:
+                    logging.info("Team cog was already loaded")
+                except Exception as e:
+                    logging.error(f"Failed to load team cog: {e}")
+
             else:
-                logging.info("No guilds found with setup=FALSE. Skipping initial load of Verification and RoleManagement cogs.")
+                logging.info("No guilds found with setup=FALSE. Skipping initial load of Verification, RoleManagement, and Team cogs.")
 
         except Exception as e:
             logging.error(f"Failed to fetch non-setup guilds: {e}")

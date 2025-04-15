@@ -51,7 +51,9 @@ CREATE TABLE IF NOT EXISTS guilds (
     fall_warning_1d_sent_year INT,
     spring_warning_1m_sent_year INT,
     spring_warning_1w_sent_year INT,
-    spring_warning_1d_sent_year INT
+    spring_warning_1d_sent_year INT,
+    -- New column for Team/Tryouts
+    tryout_manager_role_id BIGINT
 );
 
 -- Table to map users to guilds
@@ -79,4 +81,38 @@ CREATE TABLE IF NOT EXISTS role_reactions (
     emoji TEXT NOT NULL,
     role_id BIGINT NOT NULL,
     UNIQUE(guild_id, message_id, emoji)
+);
+
+-- Table for Tryouts Configuration
+CREATE TABLE IF NOT EXISTS tryouts (
+    tryout_id SERIAL PRIMARY KEY,
+    guild_id BIGINT NOT NULL REFERENCES guilds(guild_id) ON DELETE CASCADE,
+    category_id BIGINT NOT NULL, -- Discord Category ID
+    category_name TEXT NOT NULL, -- Store name for easier lookup/display
+    role_id BIGINT NOT NULL, -- Role assigned to participants
+    role_name TEXT NOT NULL, -- Store name for easier lookup/display
+    team_size INT NOT NULL CHECK (team_size > 0),
+    google_form_link TEXT,
+    google_form_id TEXT, -- Extracted ID
+    is_active BOOLEAN DEFAULT TRUE, -- To easily enable/disable tryouts
+    UNIQUE(guild_id, category_id) -- Only one tryout config per category per guild
+);
+
+-- Table for Tryout Participants
+CREATE TABLE IF NOT EXISTS tryout_participants (
+    participant_id SERIAL PRIMARY KEY,
+    tryout_id INT NOT NULL REFERENCES tryouts(tryout_id) ON DELETE CASCADE,
+    discord_id BIGINT NOT NULL REFERENCES users(discord_id) ON DELETE CASCADE,
+    wins INT DEFAULT 0,
+    losses INT DEFAULT 0,
+    UNIQUE(tryout_id, discord_id) -- User can only participate once per tryout
+);
+
+-- Table for Tryout Match History (Optional but recommended)
+CREATE TABLE IF NOT EXISTS tryout_matches (
+    match_id SERIAL PRIMARY KEY,
+    tryout_id INT NOT NULL REFERENCES tryouts(tryout_id) ON DELETE CASCADE,
+    match_time TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    winning_team_discord_ids BIGINT[],
+    losing_team_discord_ids BIGINT[]
 );
