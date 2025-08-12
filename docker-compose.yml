@@ -11,13 +11,12 @@ services:
     restart: unless-stopped
 
   postgres:
-    build: 
-      context: ./Database
-      dockerfile: Dockerfile
+    image: postgres:14
     env_file:
       - ./Database/.env
-    # volumes:
-    #   - postgres_data:/var/lib/postgresql/data
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./Database/init:/docker-entrypoint-initdb.d  # Mount initialization scripts
     networks:
       - bot-net
     healthcheck:
