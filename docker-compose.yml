@@ -1,52 +1,40 @@
 services:
-  discord-bot:
+  bot:
     build: ./Bot
-    env_file:
-      - ./Bot/.env
-    networks:
-      - bot-net
+    env_file: .env
+    restart: unless-stopped
     depends_on:
-      postgres:
-        condition: service_healthy
-    restart: unless-stopped
-
-  postgres:
-    build: 
-      context: ./Database
-      dockerfile: Dockerfile
-    env_file:
-      - ./Database/.env
-    # volumes:
-    #   - postgres_data:/var/lib/postgresql/data
+      - db
     networks:
-      - bot-net
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 2s
-      timeout: 2s
-      retries: 5
-    restart: unless-stopped
-    ports:
-      - "5432:5432"  # Add port mapping for pgAdmin access
+      - bot-network
 
-  # pgadmin:
-  #   image: dpage/pgadmin4
-  #   environment:
-  #     PGADMIN_DEFAULT_EMAIL: "admin@admin.com"
-  #     PGADMIN_DEFAULT_PASSWORD: "admin"
-  #   # volumes:
-  #   #   - pgadmin_data:/var/lib/pgadmin
-  #   ports:
-  #     - "5050:80"
-  #   networks:
-  #     - bot-net
-  #   depends_on:
-  #     - postgres
+  db:
+    image: postgres:16-alpine
+    env_file: .env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    restart: unless-stopped
+    networks:
+      - bot-network
+
+  pgadmin:
+    image: dpage/pgadmin4
+    env_file: .env
+    ports:
+      - "5050:80"
+    depends_on:
+      - db
+    restart: unless-stopped
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    networks:
+      - bot-network
 
 volumes:
   postgres_data:
   pgadmin_data:
 
 networks:
-  bot-net:
+  bot-network:
     driver: bridge
