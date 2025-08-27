@@ -26,5 +26,5 @@ async def backfill_command_logic(interaction: discord.Interaction):
         'Verified': interaction.guild.get_role(settings.get('verified_id')),
     }
     
-    await _backfill_users(interaction.guild, role_objects, engineer_channel)
+    await _backfill_users(interaction.guild, role_objects, engineer_channel, assign_verified_role=True)
     return "Backfill process complete. Check the engineer channel for detailed logs."

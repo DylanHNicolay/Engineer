@@ -7,6 +7,7 @@ import string
 import tempfile
 from utils.db import db
 from utils.email import email_sender
+from utils.role_utils import handle_role_change
 
 async def scan_file_local(attachment: discord.Attachment):
     """Scans a file using the local clamscan command-line tool."""
@@ -99,19 +100,29 @@ async def start_alumni_verification(interaction: discord.Interaction):
         message = await interaction.client.wait_for('message', check=check_attachment, timeout=1800.0)
         attachment = message.attachments[0]
 
-        settings = await db.execute("SELECT verified_id, engineer_channel_id FROM server_settings WHERE guild_id = $1", interaction.guild.id)
-        if not settings or not settings[0]['verified_id']:
-            await dm_channel.send("The Verified role is not configured on this server. Please contact an administrator.")
+        # --- Role Assignment Logic ---
+        settings_records = await db.execute("SELECT * FROM server_settings WHERE guild_id = $1", interaction.guild.id)
+        if not settings_records:
+            await dm_channel.send("Server settings are not configured. Please contact an administrator.")
             return
 
-        verified_role = interaction.guild.get_role(settings[0]['verified_id'])
-        if verified_role:
-            await interaction.user.add_roles(verified_role)
-            await dm_channel.send(f"Thank you. You've been granted the `{verified_role.name}` role while we review your submission. This may take some time.")
-        else:
-            await dm_channel.send("Thank you. We will now review your submission. The Verified role could not be found.")
+        settings = settings_records[0]
+        verified_role = interaction.guild.get_role(settings.get('verified_id'))
+        if not verified_role:
+            await dm_channel.send("The Verified role is not configured. Please contact an administrator.")
+            return
 
-        engineer_channel_id = settings[0]['engineer_channel_id']
+        all_status_roles = {
+            'Student': interaction.guild.get_role(settings.get('student_id')),
+            'Alumni': interaction.guild.get_role(settings.get('alumni_id')),
+            'Friend': interaction.guild.get_role(settings.get('friend_id')),
+            'Verified': verified_role,
+        }
+        
+        await handle_role_change(interaction.guild, interaction.user.id, verified_role, all_status_roles)
+        await dm_channel.send(f"Thank you. Your previous status roles have been removed, and you've been granted the `{verified_role.name}` role while we review your submission.")
+
+        engineer_channel_id = settings.get('engineer_channel_id')
         if not engineer_channel_id:
             await dm_channel.send("Could not find the staff channel to forward your submission. Please contact an administrator.")
             return

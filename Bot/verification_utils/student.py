@@ -6,6 +6,7 @@ import string
 from utils.db import db
 from utils.email import email_sender
 from utils.user_init import add_user
+from utils.role_utils import handle_role_change
 
 async def start_student_verification(interaction: discord.Interaction):
     """Initiates the student verification process in DMs."""
@@ -64,21 +65,29 @@ async def start_student_verification(interaction: discord.Interaction):
         years_message = await interaction.client.wait_for('message', check=check_years, timeout=300.0)
         years_remaining = int(years_message.content.strip())
         
-        # Grant role and update database
-        settings = await db.execute("SELECT student_id FROM server_settings WHERE guild_id = $1", interaction.guild.id)
-        if not settings or not settings[0]['student_id']:
-            await dm_channel.send("The Student role is not configured on this server. Please contact an administrator.")
+        # --- Role Assignment Logic ---
+        settings_records = await db.execute("SELECT * FROM server_settings WHERE guild_id = $1", interaction.guild.id)
+        if not settings_records:
+            await dm_channel.send("Server settings are not configured. Please contact an administrator.")
             return
-            
-        student_role = interaction.guild.get_role(settings[0]['student_id'])
+        
+        settings = settings_records[0]
+        student_role = interaction.guild.get_role(settings.get('student_id'))
         if not student_role:
-            await dm_channel.send("Could not find the Student role. Please contact an administrator.")
+            await dm_channel.send("The Student role could not be found. Please contact an administrator.")
             return
 
-        await interaction.user.add_roles(student_role)
+        all_status_roles = {
+            'Student': student_role,
+            'Alumni': interaction.guild.get_role(settings.get('alumni_id')),
+            'Friend': interaction.guild.get_role(settings.get('friend_id')),
+            'Verified': interaction.guild.get_role(settings.get('verified_id')),
+        }
+
+        await handle_role_change(interaction.guild, interaction.user.id, student_role, all_status_roles)
         await add_user(interaction.user.id, years_remaining)
 
-        await dm_channel.send(f"You have been granted the {student_role.name} role and your information has been stored. Welcome!")
+        await dm_channel.send(f"You have been granted the {student_role.name} role and your previous status roles have been removed. Welcome!")
 
     except asyncio.TimeoutError:
         await dm_channel.send("You took too long to respond. The verification process has expired. Please try again.")

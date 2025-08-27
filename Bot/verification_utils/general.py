@@ -6,6 +6,7 @@ import string
 from utils.db import db
 from utils.email import email_sender
 from utils.user_init import add_user
+from utils.role_utils import handle_role_change
 
 async def start_general_verification(interaction: discord.Interaction):
     """Initiates the general email verification process in DMs."""
@@ -55,19 +56,27 @@ async def start_general_verification(interaction: discord.Interaction):
             await dm_channel.send("Incorrect code. Please start the verification process again.")
             return
 
-        settings = await db.execute("SELECT verified_id FROM server_settings WHERE guild_id = $1", interaction.guild.id)
-        if not settings or not settings[0]['verified_id']:
-            await dm_channel.send("The Verified role is not configured on this server. Please contact an administrator.")
-            return
-            
-        verified_role = interaction.guild.get_role(settings[0]['verified_id'])
-        if not verified_role:
-            await dm_channel.send("Could not find the Verified role. Please contact an administrator.")
+        settings_records = await db.execute("SELECT * FROM server_settings WHERE guild_id = $1", interaction.guild.id)
+        if not settings_records:
+            await dm_channel.send("Server settings are not configured. Please contact an administrator.")
             return
 
-        await interaction.user.add_roles(verified_role)
-        await add_user(interaction.user.id, -2)  # -2 for Verified
-        await dm_channel.send(f"Verification successful! You have been granted the {verified_role.name} role. Welcome!")
+        settings = settings_records[0]
+        verified_role = interaction.guild.get_role(settings.get('verified_id'))
+        if not verified_role:
+            await dm_channel.send("The Verified role could not be found. Please contact an administrator.")
+            return
+
+        all_status_roles = {
+            'Student': interaction.guild.get_role(settings.get('student_id')),
+            'Alumni': interaction.guild.get_role(settings.get('alumni_id')),
+            'Friend': interaction.guild.get_role(settings.get('friend_id')),
+            'Verified': verified_role,
+        }
+
+        await handle_role_change(interaction.guild, interaction.user.id, verified_role, all_status_roles)
+        await add_user(interaction.user.id, -2)
+        await dm_channel.send(f"Verification successful! Your previous status roles have been removed and you have been granted the {verified_role.name} role. Welcome!")
 
     except asyncio.TimeoutError:
         await dm_channel.send("You took too long to respond. The verification process has expired. Please try again.")

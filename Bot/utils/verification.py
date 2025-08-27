@@ -72,7 +72,7 @@ async def _send_verification_embed(channel: discord.TextChannel):
             "🎓 **Student** - Current RPI student\n"
             "🎊 **Alumni** - Former RPI student\n"
             "👥 **Friend** - Friend of an existing member\n"
-            "🔍 **General Verification** - Interested in attending RPI"
+            "🔍 **General Verification** -  Any other reason"
         ),
         color=discord.Color.blue()
     )

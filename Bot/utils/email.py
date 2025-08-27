@@ -6,7 +6,7 @@ from email.message import EmailMessage
 
 class EmailSender:
     def __init__(self):
-        self.limit = 400
+        self.limit = 495
         self.counter = self.limit
         self.smtp_server = "smtp.gmail.com"
         self.port = 465  # For SSL

@@ -1,30 +1,32 @@
 import discord
 from discord import app_commands
 from utils.db import db
+from utils.role_utils import handle_role_change
 
 async def year_command_logic(guild: discord.Guild):
     """
     Admin command logic to update student years, graduate students, and clean up the database.
     """
     users_in_db = await db.execute("SELECT discord_id, years_remaining FROM users")
-    settings_records = await db.execute("SELECT student_id, alumni_id FROM server_settings WHERE guild_id = $1", guild.id)
+    settings_records = await db.execute("SELECT * FROM server_settings WHERE guild_id = $1", guild.id)
     
     if not settings_records:
         return "Server settings not found. Please run the setup."
     
     settings = settings_records[0]
-    student_role_id = settings.get('student_id')
-    alumni_role_id = settings.get('alumni_id')
-
-    if not student_role_id or not alumni_role_id:
-        return "Student or Alumni role is not configured on this server."
-
-    student_role = guild.get_role(student_role_id)
-    alumni_role = guild.get_role(alumni_role_id)
+    student_role = guild.get_role(settings.get('student_id'))
+    alumni_role = guild.get_role(settings.get('alumni_id'))
 
     if not student_role or not alumni_role:
-        return "Could not find Student or Alumni role on the server."
+        return "Student or Alumni role is not configured on this server."
 
+    all_status_roles = {
+        'Student': student_role,
+        'Alumni': alumni_role,
+        'Friend': guild.get_role(settings.get('friend_id')),
+        'Verified': guild.get_role(settings.get('verified_id')),
+    }
+    
     log = []
     
     for user_record in users_in_db:
@@ -43,9 +45,7 @@ async def year_command_logic(guild: discord.Guild):
             
         elif years == 1:
             await db.execute("UPDATE users SET years_remaining = 0 WHERE discord_id = $1", member.id)
-            if student_role in member.roles:
-                await member.remove_roles(student_role)
-            await member.add_roles(alumni_role)
+            await handle_role_change(guild, member.id, alumni_role, all_status_roles)
             
             try:
                 dm_channel = await member.create_dm()
@@ -59,8 +59,8 @@ async def year_command_logic(guild: discord.Guild):
         
         elif years == 0:
             if alumni_role not in member.roles:
-                await member.add_roles(alumni_role)
-                log.append(f"Ensured `{member.display_name}` has the Alumni role.")
+                await handle_role_change(guild, member.id, alumni_role, all_status_roles)
+                log.append(f"Ensured `{member.display_name}` has the Alumni role (and no other status roles).")
 
     if not log:
         return "Year-end process complete. No changes were made."
