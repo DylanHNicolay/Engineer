@@ -86,3 +86,14 @@ A comprehensive Discord bot designed for communities, particularly those associa
 ### User Verification
 
 -   Users can go to the `#verify` channel and click the button that corresponds to their status to begin the verification process in their DMs.
+
+### Bot Permissions
+
+When inviting the bot to your server, you must grant it a specific set of permissions for it to function correctly. The easiest way to do this is to generate an invite link from the Discord Developer Portal (`OAuth2` > `URL Generator`) with the `bot` and `applications.commands` scopes, and then select the following permissions:
+
+-   **Manage Roles:** **(Critical)** Needed to assign the `Student`, `Alumni`, `Friend`, and `Verified` roles.
+-   **Manage Channels:** Needed to create the `#engineer` and `#verify` channels on server join.
+-   **Send Messages:** Required for all bot communication.
+-   **Embed Links:** Needed to post the formatted verification message.
+-   **Attach Files:** Required for forwarding alumni verification documents.
+-   **Read Message History:** Needed to find and delete old verification messages on restart.
