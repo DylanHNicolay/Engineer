@@ -28,10 +28,6 @@ async def start_student_verification(interaction: discord.Interaction):
         rcsid_message = await interaction.client.wait_for('message', check=check_rcsid, timeout=300.0)
         rcsid = rcsid_message.content.strip().lower()
 
-        if not re.match(r"^[a-z]{2,8}[0-9]{1,2}$", rcsid):
-            await dm_channel.send("That doesn't look like a valid RCSID. Please start the verification process again.")
-            return
-
         verification_code = ''.join(random.choices(string.digits, k=6))
         email_address = f"{rcsid}@rpi.edu"
         
@@ -44,7 +40,6 @@ async def start_student_verification(interaction: discord.Interaction):
         if not success:
             await dm_channel.send(f"There was an error sending your verification email: {message}")
             return
-
         await dm_channel.send(f"A verification code has been sent to `{email_address}`. Please enter the 6-digit code below. You have 5 minutes.")
 
         def check_code(m):
