@@ -17,6 +17,7 @@ class MyClient(commands.Bot):
 
     async def setup_hook(self):
         self.tree.clear_commands(guild=None)
+        bot.load_extension("Bot.Teams.teams")
         self.tree.sync
 
     async def on_ready(self):
