@@ -21,4 +21,4 @@ CREATE TABLE dues (
     starters int,
     substitues int,
     non-player int
-)
+);
