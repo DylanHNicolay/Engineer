@@ -8,32 +8,55 @@ from utils.verification import VerificationView, refresh_verification_message
 from commands.year import year_command_logic
 from commands.backfill import backfill_command_logic
 from utils.email import email_sender
+from cogs.roles import RolesCog
 
 intents = discord.Intents.all()
 
-bot = commands.Bot(command_prefix="/", intents=intents)
+class MyBot(commands.Bot):
+    def __init__(self):
+        super().__init__(command_prefix="/", intents=intents)
+
+    async def setup_hook(self):
+        print("Running setup hook...")
+        await db.connect()
+        await email_sender.start()
+        self.add_view(VerificationView())
+        print("Connected to the database and started services.")
+
+        # Run migrations
+        await db.execute("CREATE TABLE IF NOT EXISTS role_reaction_messages (message_id BIGINT PRIMARY KEY);")
+        await db.execute("ALTER TABLE role_reactions ADD COLUMN IF NOT EXISTS guild_id BIGINT;")
+        try:
+            await db.execute("""
+                ALTER TABLE role_reactions 
+                ADD CONSTRAINT role_reactions_message_id_fkey 
+                FOREIGN KEY (message_id) 
+                REFERENCES role_reaction_messages(message_id) 
+                ON DELETE CASCADE;
+            """)
+        except Exception:
+            # Constraint likely already exists
+            pass
+        print("Database migrations applied.")
+
+        await self.load_extension("cogs.roles")
+        print("Loaded cogs.")
+
+        print("Syncing application commands...")
+        synced = await self.tree.sync()
+        print(f"Synced {len(synced)} command(s).")
+
+        print("Refreshing verification messages in all guilds...")
+        for guild in self.guilds:
+            await refresh_verification_message(guild)
+        print("Verification messages refreshed.")
+
+bot = MyBot()
 
 @bot.event
 async def on_ready():
     print(f'Logged in as {bot.user.name}')
-    try:
-        await db.connect()
-        await email_sender.start()
-        bot.add_view(VerificationView())
-        print("Connected to the database.")
-
-        # Syncing the command tree will add any new commands and remove old ones.
-        print("Syncing application commands...")
-        synced = await bot.tree.sync()
-        print(f"Synced {len(synced)} command(s).")
-
-        print("Refreshing verification messages in all guilds...")
-        for guild in bot.guilds:
-            await refresh_verification_message(guild)
-        print("Verification messages refreshed.")
-
-    except Exception as e:
-        print(f"An error occurred on startup: {e}")
+    # The main setup is now in setup_hook
 
 @bot.event
 async def on_guild_join(guild: discord.Guild):
