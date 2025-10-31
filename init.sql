@@ -1,24 +1,30 @@
 CREATE TYPE semester_type AS ENUM ('Fall', 'Summer', 'Spring');
 
-CREATE TABLE team (
-    teamid BIGINT NOT NULL PRIMARY KEY,
-    teamname VARCHAR(100) NOT NULL,
-    roleid BIGINT NOT NULL,
-    channelid BIGINT NOT NULL,
-    categoryid BIGINT NOT NULL,
-    categoryname VARCHAR(100) NOT NULL,
-    discordid BIGINT NOT NULL,
-    yr INT NOT NULL,
-    semester semester_type NOT NULL
+CREATE TABLE teams (
+    team_id SERIAL PRIMARY KEY,
+    team_name VARCHAR(100) NOT NULL,
+    role_id BIGINT NOT NULL,
+    channel_id BIGINT NOT NULL,
+    category_id BIGINT NOT NULL,
+    captain_discord_id BIGINT NOT NULL,
+    year INT NOT NULL,
+    semester semester_type NOT NULL,
+    archived BOOLEAN DEFAULT FALSE
 );
 
-CREATE TABLE player (
-    discordid BIGINT NOT NULL PRIMARY KEY,
-    rcsid VARCHAR(50) NOT NULL
+CREATE TABLE players (
+    player_discord_id BIGINT PRIMARY KEY,
+    rcsid VARCHAR(50)
+);
+
+CREATE TABLE team_members (
+    team_id INT REFERENCES teams(team_id) ON DELETE CASCADE,
+    player_discord_id BIGINT REFERENCES players(player_discord_id) ON DELETE CASCADE,
+    PRIMARY KEY (team_id, player_discord_id)
 );
 
 CREATE TABLE dues (
     starters int,
     substitues int,
-    non-player int
+    non_player int
 );
