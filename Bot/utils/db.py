@@ -18,11 +18,15 @@ class Database:
 
     async def _worker(self):
         while True:
+            future, query, params = await self.queue.get()
             try:
                 if self._pool is None:
                     await asyncio.sleep(0.1) # Wait for pool to be initialized
+                    # Re-queue the item if the pool is not ready
+                    await self.queue.put((future, query, params))
+                    self.queue.task_done()
                     continue
-                future, query, params = await self.queue.get()
+
                 async with self._pool.acquire() as connection:
                     async with connection.transaction():
                         try:
@@ -32,6 +36,8 @@ class Database:
                             future.set_exception(e)
             except Exception as e:
                 print(f"Error in DB worker: {e}")
+                if not future.done():
+                    future.set_exception(e)
             finally:
                 self.queue.task_done()
 

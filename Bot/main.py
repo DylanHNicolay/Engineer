@@ -19,7 +19,10 @@ class MyClient(commands.Bot):
         await db.connect()
         await self.load_extension("Teams.teams")
         await self.load_extension("Admin.admin")
-        await self.tree.sync()
+
+        guild = discord.Object(id=1281629365939208233)
+        self.tree.clear_commands(guild=guild)
+        await self.tree.sync(guild=guild)
 
     async def on_ready(self):
         print(f'Logged in as {self.user} (ID: {self.user.id})') # type: ignore
