@@ -16,3 +16,9 @@ CREATE TABLE player (
     discordid BIGINT NOT NULL PRIMARY KEY,
     rcsid VARCHAR(50) NOT NULL
 );
+
+CREATE TABLE dues (
+    starters int,
+    substitues int,
+    non-player int
+)
