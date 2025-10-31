@@ -19,6 +19,9 @@ class Database:
     async def _worker(self):
         while True:
             try:
+                if self._pool is None:
+                    await asyncio.sleep(0.1) # Wait for pool to be initialized
+                    continue
                 future, query, params = await self.queue.get()
                 async with self._pool.acquire() as connection:
                     async with connection.transaction():

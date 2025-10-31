@@ -7,18 +7,19 @@ from utils.db import db
 
 
 TOKEN = os.getenv('DISCORD_TOKEN')
+
 # Define the intents your bot needs
-intents = discord.Intents.default()
-intents.message_content = True
+intents = discord.Intents.all()
 
 class MyClient(commands.Bot):
     def __init__(self, *, intents: discord.Intents):
-        super().__init__(command_prefix="!", intents=intents)
+        super().__init__(command_prefix=None, intents=intents)
 
     async def setup_hook(self):
-        self.tree.clear_commands(guild=None)
-        bot.load_extension("Bot.Teams.teams")
-        self.tree.sync
+        await db.connect()
+        await self.load_extension("Teams.teams")
+        await self.load_extension("Admin.admin")
+        await self.tree.sync()
 
     async def on_ready(self):
         print(f'Logged in as {self.user} (ID: {self.user.id})') # type: ignore
@@ -26,9 +27,4 @@ class MyClient(commands.Bot):
 
 
 client = MyClient(intents=intents)
-
-def main():
-    client.run(TOKEN) # type: ignore
-
-if __name__ == "__main__":
-    main()
+client.run(TOKEN) # type: ignore

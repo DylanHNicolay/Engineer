@@ -23,6 +23,10 @@ CREATE TABLE team_members (
     PRIMARY KEY (team_id, player_discord_id)
 );
 
+CREATE TABLE admin_roles(
+    role_id BIGINT PRIMARY KEY
+);
+
 CREATE TABLE dues (
     starters int,
     substitues int,
