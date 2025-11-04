@@ -13,7 +13,7 @@ intents = discord.Intents.all()
 
 class MyClient(commands.Bot):
     def __init__(self, *, intents: discord.Intents):
-        super().__init__(command_prefix=None, intents=intents)
+        super().__init__(command_prefix='', intents=intents)
 
     async def setup_hook(self):
         await db.connect()

@@ -1,12 +1,38 @@
-from discord.ext import commands
-from discord import app_commands
 import discord
+from discord import app_commands
+from discord.ext import commands
+
+def is_admin_check():
+    """
+    A check to see if the user is an admin.
+    This check is meant to be used on app commands within a cog.
+    """
+    async def predicate(interaction: discord.Interaction) -> bool:
+        # The cog is attached to the interaction.
+        admin_cog = interaction.client.get_cog('Admin')
+        if not admin_cog:
+            # This should not happen if the Admin cog is loaded.
+            await interaction.response.send_message("Admin cog not found.", ephemeral=True)
+            return False
+
+        # We need to ensure the user is a member of a guild.
+        if not isinstance(interaction.user, discord.Member):
+            await interaction.response.send_message("This command can only be used in a server.", ephemeral=True)
+            return False
+
+        if not await admin_cog.is_admin(interaction.user):
+            await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
+            return False
+        
+        return True
+    return app_commands.check(predicate)
 
 class Teams(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
     @app_commands.command(name="create_team", description="Create a new team")
+    @is_admin_check()
     async def create_team(self, interaction: discord.Interaction, team_name: str):
         """Creates a new team, role, and channel."""
         guild = interaction.guild
