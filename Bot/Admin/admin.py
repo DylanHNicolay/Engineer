@@ -24,27 +24,6 @@ class Admin(commands.Cog):
 
     admin = app_commands.Group(name="admin", description="Admin commands")
 
-    @admin.command(name="sync", description="Syncs the command tree. (Owner only)")
-    async def sync(self, interaction: discord.Interaction):
-        """Syncs the command tree."""
-        if interaction.user.id != interaction.guild.owner_id:
-            await interaction.response.send_message("Only the server owner can use this command.", ephemeral=True)
-            return
-
-        await interaction.response.defer()
-        try:
-            # Sync to the current guild
-            self.bot.tree.copy_global_to(guild=interaction.guild)
-            await self.bot.tree.sync(guild=interaction.guild)
-
-            # Or sync globally
-            # await self.bot.tree.sync()
-
-            await interaction.followup.send("Commands synced!")
-        except Exception as e:
-            await interaction.followup.send(f"An error occurred while syncing: {e}")
-
-
     @admin.command(name="define", description="Define an admin role.")
     async def define(self, interaction: discord.Interaction, role: discord.Role):
         """Define an admin role."""

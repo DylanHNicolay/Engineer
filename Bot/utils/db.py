@@ -8,13 +8,26 @@ class Database:
         self.queue = asyncio.Queue()
 
     async def connect(self):
-        self._pool = await asyncpg.create_pool(
-            user=os.getenv("POSTGRES_USER"),
-            password=os.getenv("POSTGRES_PASSWORD"),
-            database=os.getenv("POSTGRES_DB"),
-            host='db'
-        )
-        asyncio.create_task(self._worker())
+        retries = 5
+        delay = 3
+        for i in range(retries):
+            try:
+                self._pool = await asyncpg.create_pool(
+                    user=os.getenv("POSTGRES_USER"),
+                    password=os.getenv("POSTGRES_PASSWORD"),
+                    database=os.getenv("POSTGRES_DB"),
+                    host='db'
+                )
+                asyncio.create_task(self._worker())
+                print("Database connection successful.")
+                return
+            except (ConnectionRefusedError, asyncpg.exceptions.CannotConnectNowError) as e:
+                if i < retries - 1:
+                    print(f"Database connection failed. Retrying in {delay} seconds... ({i+1}/{retries})")
+                    await asyncio.sleep(delay)
+                else:
+                    print("Database connection failed after multiple retries.")
+                    raise e
 
     async def _worker(self):
         while True:
@@ -48,6 +61,7 @@ class Database:
 
     async def close(self):
         await self.queue.join()
-        await self._pool.close()
+        if self._pool:
+            await self._pool.close()
 
 db = Database()

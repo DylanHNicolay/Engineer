@@ -2,7 +2,7 @@ CREATE TYPE semester_type AS ENUM ('Fall', 'Summer', 'Spring');
 
 CREATE TABLE teams (
     team_id SERIAL PRIMARY KEY,
-    team_name VARCHAR(100) NOT NULL,
+    team_nick VARCHAR(100),
     role_id BIGINT NOT NULL,
     channel_id BIGINT NOT NULL,
     category_id BIGINT NOT NULL,
@@ -20,6 +20,7 @@ CREATE TABLE players (
 CREATE TABLE team_members (
     team_id INT REFERENCES teams(team_id) ON DELETE CASCADE,
     player_discord_id BIGINT REFERENCES players(player_discord_id) ON DELETE CASCADE,
+    is_starter BOOLEAN DEFAULT FALSE,
     PRIMARY KEY (team_id, player_discord_id)
 );
 

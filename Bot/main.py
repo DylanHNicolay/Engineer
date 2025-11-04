@@ -13,21 +13,21 @@ intents = discord.Intents.all()
 
 class MyClient(commands.Bot):
     def __init__(self, *, intents: discord.Intents):
-        super().__init__(command_prefix='', intents=intents, allowed_mentions=None)
-        self._synced = False
+        super().__init__(command_prefix='!', intents=intents)
 
     async def setup_hook(self):
         await db.connect()
+        
+        # Load extensions first so their commands are registered
         await self.load_extension("Teams.teams")
         await self.load_extension("Admin.admin")
 
-    async def on_ready(self):
-        if not self._synced:
-            guild = discord.Object(id=1281629365939208233)
-            self.tree.clear_commands(guild=guild)
-            await self.tree.sync(guild=guild)
-            self._synced = True
+        # Then sync to the guild
+        guild = discord.Object(id=1281629365939208233)
+        self.tree.copy_global_to(guild=guild)
+        await self.tree.sync(guild=guild)
 
+    async def on_ready(self):
         print(f'Logged in as {self.user} (ID: {self.user.id})') # type: ignore
         print('------')
 
