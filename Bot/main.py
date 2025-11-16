@@ -19,7 +19,7 @@ class MyClient(commands.Bot):
         await db.connect()
         
         # Load extensions first so their commands are registered
-        await self.load_extension("Teams.teams")
+        await self.load_extension("Teams.create-team")
         await self.load_extension("Admin.admin")
 
         # Then sync to the guild
