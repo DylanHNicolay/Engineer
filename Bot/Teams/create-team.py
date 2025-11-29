@@ -457,67 +457,70 @@ class create_team(commands.Cog):
         assert draft.role and draft.channel and draft.category and draft.captain and draft.year and draft.semester
         warnings: List[str] = []
 
-        conflict = await db.execute(
-            """
-            SELECT team_id
-            FROM teams
-            WHERE role_id = $1 AND category_id = $2 AND channel_id = $3 AND archived IS NOT TRUE
-            """,
-            draft.role.id,
-            draft.category.id,
-            draft.channel.id,
-        )
-        if conflict:
-            raise TeamCreationError(
-                "Another active team already uses this role, category, and channel. Archive it before creating a new one."
-            )
-
-        team_rows = await db.execute(
-            """
-            INSERT INTO teams (team_nick, role_id, channel_id, category_id, captain_discord_id, year, semester)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING team_id
-            """,
-            draft.team_nick,
-            draft.role.id,
-            draft.channel.id,
-            draft.category.id,
-            draft.captain.id,
-            draft.year,
-            draft.semester,
-        )
-        if not team_rows:
-            raise TeamCreationError("Failed to insert the team record.")
-        team_id = team_rows[0]["team_id"]
-
-        async def upsert_player(discord_id: int) -> None:
-            await db.execute(
-                "INSERT INTO players (player_discord_id) VALUES ($1) ON CONFLICT (player_discord_id) DO NOTHING",
-                discord_id,
-            )
-
-        async def upsert_member(discord_id: int, status: str) -> None:
-            await db.execute(
+        async def db_transaction(connection):
+            conflict = await connection.fetch(
                 """
-                INSERT INTO team_members (team_id, player_discord_id, member_status)
-                VALUES ($1, $2, $3)
-                ON CONFLICT (team_id, player_discord_id)
-                DO UPDATE SET member_status = EXCLUDED.member_status
+                SELECT team_id
+                FROM teams
+                WHERE role_id = $1 AND category_id = $2 AND channel_id = $3 AND archived IS NOT TRUE
                 """,
-                team_id,
-                discord_id,
-                status,
+                draft.role.id,
+                draft.category.id,
+                draft.channel.id,
             )
+            if conflict:
+                raise TeamCreationError(
+                    "Another active team already uses this role, category, and channel. Archive it before creating a new one."
+                )
 
-        for member in draft.starters + draft.substitutes:
-            await upsert_player(member.id)
+            team_rows = await connection.fetch(
+                """
+                INSERT INTO teams (team_nick, role_id, channel_id, category_id, captain_discord_id, year, semester)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                RETURNING team_id
+                """,
+                draft.team_nick,
+                draft.role.id,
+                draft.channel.id,
+                draft.category.id,
+                draft.captain.id,
+                draft.year,
+                draft.semester,
+            )
+            if not team_rows:
+                raise TeamCreationError("Failed to insert the team record.")
+            team_id = team_rows[0]["team_id"]
 
-        await upsert_player(draft.captain.id)
+            async def upsert_player(discord_id: int) -> None:
+                await connection.execute(
+                    "INSERT INTO players (player_discord_id) VALUES ($1) ON CONFLICT (player_discord_id) DO NOTHING",
+                    discord_id,
+                )
 
-        for member in draft.starters:
-            await upsert_member(member.id, "starter")
-        for member in draft.substitutes:
-            await upsert_member(member.id, "sub")
+            async def upsert_member(discord_id: int, status: str) -> None:
+                await connection.execute(
+                    """
+                    INSERT INTO team_members (team_id, player_discord_id, member_status)
+                    VALUES ($1, $2, $3)
+                    ON CONFLICT (team_id, player_discord_id)
+                    DO UPDATE SET member_status = EXCLUDED.member_status
+                    """,
+                    team_id,
+                    discord_id,
+                    status,
+                )
+
+            for member in draft.starters + draft.substitutes:
+                await upsert_player(member.id)
+
+            await upsert_player(draft.captain.id)
+
+            for member in draft.starters:
+                await upsert_member(member.id, "starter")
+            for member in draft.substitutes:
+                await upsert_member(member.id, "sub")
+
+        await db.run_in_transaction(db_transaction)
 
         # Assign the team role to everyone involved.
         involved_members = {draft.captain, *draft.starters, *draft.substitutes}

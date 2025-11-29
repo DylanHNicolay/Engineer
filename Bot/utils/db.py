@@ -31,20 +31,26 @@ class Database:
 
     async def _worker(self):
         while True:
-            future, query, params = await self.queue.get()
+            future, task_type, data = await self.queue.get()
             try:
                 if self._pool is None:
                     await asyncio.sleep(0.1) # Wait for pool to be initialized
                     # Re-queue the item if the pool is not ready
-                    await self.queue.put((future, query, params))
+                    await self.queue.put((future, task_type, data))
                     self.queue.task_done()
                     continue
 
                 async with self._pool.acquire() as connection:
                     async with connection.transaction():
                         try:
-                            result = await connection.fetch(query, *params)
-                            future.set_result(result)
+                            if task_type == 'query':
+                                query, params = data
+                                result = await connection.fetch(query, *params)
+                                future.set_result(result)
+                            elif task_type == 'callback':
+                                callback = data
+                                result = await callback(connection)
+                                future.set_result(result)
                         except Exception as e:
                             future.set_exception(e)
             except Exception as e:
@@ -56,7 +62,16 @@ class Database:
 
     async def execute(self, query, *params):
         future = asyncio.get_event_loop().create_future()
-        await self.queue.put((future, query, params))
+        await self.queue.put((future, 'query', (query, params)))
+        return await future
+
+    async def run_in_transaction(self, callback):
+        """
+        Run a callback function within a database transaction.
+        The callback should accept a single argument: the database connection.
+        """
+        future = asyncio.get_event_loop().create_future()
+        await self.queue.put((future, 'callback', callback))
         return await future
 
     async def close(self):

@@ -36,22 +36,50 @@ class ArchiveTeam(commands.Cog):
         team = teams[0]
         team_id = team['team_id']
         channel_id = team['channel_id']
+        role_id = team['role_id']
 
         # Archive in DB
         await db.execute("UPDATE teams SET archived = TRUE WHERE team_id = $1", team_id)
 
         msg = f"Team `{team_nick}` has been archived."
 
+        channel = guild.get_channel(channel_id)
+        role = guild.get_role(role_id)
+
+        if channel and role:
+            members_processed = 0
+            for member in role.members:
+                try:
+                    # Grant channel access
+                    overwrite = channel.overwrites_for(member)
+                    overwrite.view_channel = True
+                    await channel.set_permissions(member, overwrite=overwrite)
+                    
+                    # Remove role
+                    await member.remove_roles(role)
+                    members_processed += 1
+                except Exception as e:
+                    print(f"Failed to process {member}: {e}")
+            msg += f" Updated permissions and removed role for {members_processed} members."
+
+            try:
+                await role.delete(reason=f"Team {team_nick} archived")
+                msg += " Role deleted."
+            except Exception as e:
+                msg += f" Failed to delete role: {e}"
+
         if move_to_archives:
-            channel = guild.get_channel(channel_id)
             if channel:
-                # Find or create Archives category
-                archives_cat = discord.utils.find(lambda c: c.name.lower() == "archives" and isinstance(c, discord.CategoryChannel), guild.categories)
-                if not archives_cat:
-                    archives_cat = await guild.create_category("Archives")
-                
-                await channel.edit(category=archives_cat)
-                msg += f" Channel {channel.mention} moved to {archives_cat.mention}."
+                try:
+                    # Find or create Archives category
+                    archives_cat = discord.utils.find(lambda c: c.name.lower() == "archives" and isinstance(c, discord.CategoryChannel), guild.categories)
+                    if not archives_cat:
+                        archives_cat = await guild.create_category("Archives")
+                    
+                    await channel.edit(category=archives_cat)
+                    msg += f" Channel {channel.mention} moved to {archives_cat.mention}."
+                except Exception as e:
+                    msg += f" Failed to move channel to Archives: {e}"
             else:
                 msg += " Channel not found, could not move."
 
