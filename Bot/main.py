@@ -20,6 +20,8 @@ class MyClient(commands.Bot):
         
         # Load extensions first so their commands are registered
         await self.load_extension("Teams.create-team")
+        await self.load_extension("Teams.archive-team")
+        await self.load_extension("Teams.list-teams")
         await self.load_extension("Admin.admin")
 
         # Then sync to the guild

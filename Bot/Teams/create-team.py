@@ -639,5 +639,6 @@ class create_team(commands.Cog):
             ephemeral=True,
         )
 
+
 async def setup(bot: commands.Bot):
     await bot.add_cog(create_team(bot))
