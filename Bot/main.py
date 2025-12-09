@@ -23,6 +23,7 @@ class MyClient(commands.Bot):
         await self.load_extension("Teams.archive-team")
         await self.load_extension("Teams.list-teams")
         await self.load_extension("Admin.admin")
+        await self.load_extension("Dues.set-dues")
 
         # Then sync to the guild
         guild = discord.Object(id=1281629365939208233)
