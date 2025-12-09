@@ -12,7 +12,7 @@ class ListTeams(commands.Cog):
         await interaction.response.defer(ephemeral=True)
         
         try:
-            teams = await db.execute("SELECT team_nick, year, semester FROM teams WHERE archived = FALSE ORDER BY year DESC, semester DESC, team_nick ASC")
+            teams = await db.execute("SELECT team_nick, year, semester, seniority FROM teams WHERE archived = FALSE ORDER BY year DESC, semester DESC, seniority DESC, team_nick ASC")
             
             if not teams:
                 await interaction.followup.send("No active teams found.")
@@ -22,7 +22,7 @@ class ListTeams(commands.Cog):
             
             description = ""
             for team in teams:
-                description += f"• **{team['team_nick']}** ({team['semester']} {team['year']})\n"
+                description += f"• **{team['team_nick']}** ({team['semester']} {team['year']}) - Seniority: {team['seniority']}\n"
             
             embed.description = description
             await interaction.followup.send(embed=embed)

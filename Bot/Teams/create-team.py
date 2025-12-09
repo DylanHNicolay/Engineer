@@ -23,6 +23,7 @@ class TeamCreationData:
     substitutes: List[discord.Member] = field(default_factory=list)
     year: Optional[int] = None
     semester: Optional[str] = None
+    seniority: Optional[int] = None
 
 
 class ValidationError(Exception):
@@ -124,6 +125,7 @@ class create_team(commands.Cog):
         await self._ensure_captain_assignment(interaction, draft)
         draft.year = await self._prompt_year(interaction)
         draft.semester = await self._prompt_semester(interaction)
+        draft.seniority = await self._prompt_seniority(interaction)
         await self._review_answers(interaction, draft)
         return draft
 
@@ -399,6 +401,20 @@ class create_team(commands.Cog):
 
         return view.value
 
+    async def _prompt_seniority(self, interaction: discord.Interaction) -> int:
+        async def parser(content: str, _: discord.Message) -> int:
+            if not content.isdigit():
+                raise ValidationError("Please provide a numeric seniority level (e.g., 1).")
+            return int(content)
+
+        seniority = await self._ask_question(
+            interaction,
+            "Enter the team seniority level (integer). Higher number means higher seniority.",
+            parser=parser,
+        )
+        assert isinstance(seniority, int)
+        return seniority
+
     async def _review_answers(self, interaction: discord.Interaction, draft: TeamCreationData) -> None:
         field_map = {
             "team_nick": self._prompt_team_nick,
@@ -410,12 +426,13 @@ class create_team(commands.Cog):
             "substitutes": lambda i: self._prompt_member_group(i, "substitute", require_entry=False),
             "year": self._prompt_year,
             "semester": self._prompt_semester,
+            "seniority": self._prompt_seniority,
         }
 
         while True:
             summary = self._format_summary(draft)
             instructions = (
-                "Type the field name to edit (team_nick, role, category, channel, captain, starters, substitutes, year, semester)"
+                "Type the field name to edit (team_nick, role, category, channel, captain, starters, substitutes, year, semester, seniority)"
                 " or `confirm` to continue."
             )
             await interaction.followup.send(f"{summary}\n\n{instructions}", ephemeral=True)
@@ -452,9 +469,11 @@ class create_team(commands.Cog):
                 draft.year = result
             elif content.lower() == "semester":
                 draft.semester = result
+            elif content.lower() == "seniority":
+                draft.seniority = result
 
     async def _finalize_team(self, interaction: discord.Interaction, draft: TeamCreationData) -> List[str]:
-        assert draft.role and draft.channel and draft.category and draft.captain and draft.year and draft.semester
+        assert draft.role and draft.channel and draft.category and draft.captain and draft.year and draft.semester and draft.seniority is not None
         warnings: List[str] = []
 
         async def db_transaction(connection):
@@ -475,8 +494,8 @@ class create_team(commands.Cog):
 
             team_rows = await connection.fetch(
                 """
-                INSERT INTO teams (team_nick, role_id, channel_id, category_id, captain_discord_id, year, semester)
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                INSERT INTO teams (team_nick, role_id, channel_id, category_id, captain_discord_id, year, semester, seniority)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                 RETURNING team_id
                 """,
                 draft.team_nick,
@@ -486,6 +505,7 @@ class create_team(commands.Cog):
                 draft.captain.id,
                 draft.year,
                 draft.semester,
+                draft.seniority,
             )
             if not team_rows:
                 raise TeamCreationError("Failed to insert the team record.")
@@ -614,7 +634,8 @@ class create_team(commands.Cog):
             f"- Starters: {starters}\n"
             f"- Substitutes: {substitutes}\n"
             f"- Year: {draft.year or 'Not set'}\n"
-            f"- Semester: {draft.semester or 'Not set'}"
+            f"- Semester: {draft.semester or 'Not set'}\n"
+            f"- Seniority: {draft.seniority if draft.seniority is not None else 'Not set'}"
         )
 
     def _dedupe_members(self, members: Iterable[discord.Member]) -> List[discord.Member]:

@@ -10,6 +10,7 @@ CREATE TABLE teams (
     captain_discord_id BIGINT NOT NULL,
     year INT NOT NULL,
     semester semester_type NOT NULL,
+    seniority INT DEFAULT 0,
     archived BOOLEAN DEFAULT FALSE
 );
 
