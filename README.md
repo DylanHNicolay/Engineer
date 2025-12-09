@@ -1,4 +1,4 @@
-# Engineer - Discord Verification Bot
+# Engineer - Discord Verification Bot (beta)
 
 A comprehensive Discord bot designed for communities, particularly those associated with universities or organizations, to manage member verification and role assignments. The bot features a robust, multi-path verification system, automated role management, and powerful administrative tools, all containerized with Docker for easy deployment.
 
