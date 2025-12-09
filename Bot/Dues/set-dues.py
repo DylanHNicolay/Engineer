@@ -52,5 +52,27 @@ class SetDues(commands.Cog):
         except Exception as e:
             await interaction.followup.send(f"An error occurred: {e}")
 
+    @app_commands.command(name="set_dues_non_players", description="Set the dues amount for non-players.")
+    @app_commands.describe(amount="The amount for non-player dues")
+    async def set_dues_non_players(self, interaction: discord.Interaction, amount: int):
+        admin_cog = interaction.client.get_cog("Admin")
+        if admin_cog is None or not await admin_cog.is_admin(interaction.user):
+            await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
+            return
+
+        await interaction.response.defer(ephemeral=True)
+
+        try:
+            # Check if a row exists
+            rows = await db.execute("SELECT * FROM dues LIMIT 1")
+            if rows:
+                await db.execute("UPDATE dues SET non_player = $1", amount)
+            else:
+                await db.execute("INSERT INTO dues (starters, substitues, non_player) VALUES (0, 0, $1)", amount)
+            
+            await interaction.followup.send(f"Non-player dues set to {amount}.")
+        except Exception as e:
+            await interaction.followup.send(f"An error occurred: {e}")
+
 async def setup(bot: commands.Bot):
     await bot.add_cog(SetDues(bot))
