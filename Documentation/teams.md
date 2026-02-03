@@ -495,8 +495,6 @@ Ensures captain is assigned to starters or substitutes, defaulting to starters.
 - Primary key: (team_id, player_discord_id)
 
 ## archive_team.py
-...existing documentation...
-## archive_team.py
 
 Handles archiving of Discord teams by updating database status, managing member permissions, deleting roles, and optionally moving channels to an Archives category.
 
