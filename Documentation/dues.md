@@ -1,6 +1,7 @@
 set-dues.py 
 
 Functions 
+
     set_dues_starters, takes in input amount 
         Checks for admin role, if the user doesn't have admin ends interaction. 
         Then select rows named dues/$ and changes column named starter in the database to the new amount. If the rows don't exist then it create them with default value then edits the column starter to the input value 
@@ -18,6 +19,7 @@ Functions
 generate.py
 
 Function 
+
     generate_dues
         Checks for admin role, if the user doesn't have admin ends interaction
         Then checks if dues has been set and if there is an active team.
