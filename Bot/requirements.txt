@@ -1,9 +1,3 @@
 discord.py
 asyncpg
-<<<<<<< HEAD
 openpyxl 
-=======
-dnspython
-psycopg2-binary
-aiosmtplib
->>>>>>> 4acfd9b (Verification Feature Reintegrate)
