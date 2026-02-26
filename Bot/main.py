@@ -27,7 +27,7 @@ class MyClient(commands.Bot):
         await self.load_extension("Dues.generate")
 
         # Then sync to the guild
-        guild = discord.Object(id=1281629365939208233)
+        guild = discord.Object(id=1281629365939208233)  # Replace with your guild ID
         self.tree.copy_global_to(guild=guild)
         await self.tree.sync(guild=guild)
 
