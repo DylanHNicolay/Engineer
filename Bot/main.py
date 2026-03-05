@@ -26,6 +26,7 @@ class MyClient(commands.Bot):
         await self.load_extension("Dues.set-dues")
         await self.load_extension("Dues.generate")
         await self.load_extension("Backfill.backfill_test")
+        await self.load_extension("utils.setup")
 
         # Then sync to the guild
         guild = discord.Object(id=1476324737016660079)  # Replace with your guild ID

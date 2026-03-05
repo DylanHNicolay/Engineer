@@ -10,10 +10,7 @@ class Backfill(commands.Cog):
 
     @app_commands.command(name="backfill", description="Runs the database backfill process for existing members.")
     async def backfill(self, interaction: discord.Interaction):
-        admin_cog = interaction.client.get_cog("Admin")
-        if admin_cog is None or not await admin_cog.is_admin(interaction.user):
-            await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
-            return
+        
         
         await interaction.response.defer(ephemeral=True)
 

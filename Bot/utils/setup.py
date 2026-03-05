@@ -1,4 +1,6 @@
 import discord
+from discord import app_commands
+from discord.ext import commands
 from utils.db import db
 from utils.verification import post_verification_message
 from utils.user_init import add_user
@@ -155,22 +157,33 @@ async def _backfill_users(guild: discord.Guild, role_objects: dict, engineer_cha
     else:
         await engineer_channel.send(log_message)
 
+class SetUp(commands.Cog):
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
 
-async def setup_guild(guild: discord.Guild):
-    """
-    Sets up the server when the bot joins by calling modular setup functions.
-    """
-    await _init_guild_db(guild)
-    
-    engineer_channel = await _create_initial_engineer_channel(guild)
-    
-    role_objects = await _setup_roles(guild, engineer_channel)
-    await _update_engineer_channel_perms(engineer_channel, role_objects)
-    
-    await _create_verify_channel(guild, engineer_channel)
-    await engineer_channel.send("Initial role and channel setup is complete. Run the `/backfill` command to populate the database with existing members. Please ensure that the bot is above the roles you want to backfill.")
+    @app_commands.command(name="setup_guild", description="Setups the discord server for use.")
+    async def setup_guild(self, interaction: discord.Interaction):
+        """
+        Sets up the server when the bot joins by calling modular setup functions.
+        """
+        await interaction.response.defer(ephemeral=True)
 
-    await post_verification_message(guild)
-    await engineer_channel.send("Posted initial verification message.")
+        guild = interaction.guild
 
-    await engineer_channel.send("Server setup complete.")
+        await _init_guild_db(guild)
+        
+        engineer_channel = await _create_initial_engineer_channel(guild)
+        
+        role_objects = await _setup_roles(guild, engineer_channel)
+        await _update_engineer_channel_perms(engineer_channel, role_objects)
+        
+        await _create_verify_channel(guild, engineer_channel)
+        await engineer_channel.send("Initial role and channel setup is complete. Run the `/backfill` command to populate the database with existing members. Please ensure that the bot is above the roles you want to backfill.")
+
+        await post_verification_message(guild)
+        await engineer_channel.send("Posted initial verification message.")
+
+        await engineer_channel.send("Server setup complete.")
+    
+async def setup(bot: commands.Bot):
+    await bot.add_cog(SetUp(bot))
