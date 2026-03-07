@@ -25,6 +25,7 @@ class MyClient(commands.Bot):
         await self.load_extension("Admin.admin")
         await self.load_extension("Dues.set-dues")
         await self.load_extension("Dues.generate")
+        await self.load_extension("Webscrape.webscrape")
 
         # Then sync to the guild
         guild = discord.Object(id=1281629365939208233)
