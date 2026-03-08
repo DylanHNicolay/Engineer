@@ -1,3 +1,6 @@
+import discord
+from discord import app_commands
+from discord.ext import commands
 import undetected_chromedriver as uc
 import time
 from selenium.webdriver.support.ui import WebDriverWait
@@ -6,87 +9,120 @@ from selenium.webdriver.common.by import By
 from getpass import getpass
 
 
-driver = uc.Chrome(version_main=144)
-driver.get("https://cms.union.rpi.edu/login/password/")
 
-# click RCS Login button
-login_button_obj = driver.find_element(By.XPATH, "//div[@id='content-wrap']/div[@id='content']//div[@id='login-panel']/div[@class='panel-body']/a")
-login_button_obj.click()
-login_button_obj = None
-time.sleep(1.5)
+# options = uc.ChromeOptions()
+# options.add_argument("--no-sandbox")
+# options.add_argument("--disable-dev-shm-usage")
+# options.add_argument("--disable-gpu")
+# options.add_argument("--headless=new")
 
-# get username input, input username
-username_input_obj = driver.find_element(By.XPATH, "//form/input[@id='username']")
-username = str(input("Username: "))
-username_input_obj.send_keys(username)
+# driver = uc.Chrome(version_main=121, options=options)
 
-# click login button to show password input
-login_button_obj = driver.find_element(By.XPATH, "//form/div/button")
-login_button_obj.click()
-login_button_obj = None
-time.sleep(1.5)
+# # driver = uc.Chrome(version_main=144)
+# driver.get("https://cms.union.rpi.edu/login/password/")
 
-# get password input, input password
-password_input_obj = driver.find_element(By.XPATH, "//form/input[@id='password']")
-password = getpass("Password: ")
-password_input_obj.send_keys(password)
+# # click RCS Login button
+# login_button_obj = driver.find_element(By.XPATH, "//div[@id='content-wrap']/div[@id='content']//div[@id='login-panel']/div[@class='panel-body']/a")
+# login_button_obj.click()
+# login_button_obj = None
+# time.sleep(1.5)
 
-# re-get login button, login
-login_button_obj = driver.find_element(By.XPATH, "//form/div/button")
-login_button_obj.click()
+# # get username input, input username
+# username_input_obj = driver.find_element(By.XPATH, "//form/input[@id='username']")
+# username = str(input("Username: "))
+# username_input_obj.send_keys(username)
 
-# receive duo code
-time.sleep(5)
-duo_code_div = driver.find_element(By.XPATH, "/html/body/div[1]/div/div[1]/div/div[2]/div[3]")
-duo_code_div = driver.find_element(By.XPATH, "//div[@class='verification-code']")
-duo_code_div = driver.find_element(By.XPATH, "//div[@class='app']")
-duo_code_div = driver.find_element(By.XPATH, "//div[@class='app']/div[@class='main']")
-duo_code_div = driver.find_element(By.XPATH, "//div[@class='app']/div[@class='main']//div[@class='verification-code']")
+# # click login button to show password input
+# login_button_obj = driver.find_element(By.XPATH, "//form/div/button")
+# login_button_obj.click()
+# login_button_obj = None
+# time.sleep(1.5)
 
-duo_code = duo_code_div.text()
-print(f"DUO CODE: {duo_code}")
-#<div class="row display-flex align-flex-justify-content-center verification-code">613</div>
+# # get password input, input password
+# password_input_obj = driver.find_element(By.XPATH, "//form/input[@id='password']")
+# password = getpass("Password: ")
+# password_input_obj.send_keys(password)
 
-time.sleep(10)
+# # re-get login button, login
+# login_button_obj = driver.find_element(By.XPATH, "//form/div/button")
+# login_button_obj.click()
 
-driver.quit()
+# # receive duo code
+# time.sleep(5)
+# duo_code_div = driver.find_element(By.XPATH, "/html/body/div[1]/div/div[1]/div/div[2]/div[3]")
+# duo_code_div = driver.find_element(By.XPATH, "//div[@class='verification-code']")
+# duo_code_div = driver.find_element(By.XPATH, "//div[@class='app']")
+# duo_code_div = driver.find_element(By.XPATH, "//div[@class='app']/div[@class='main']")
+# duo_code_div = driver.find_element(By.XPATH, "//div[@class='app']/div[@class='main']//div[@class='verification-code']")
+
+# duo_code = duo_code_div.text()
+# print(f"DUO CODE: {duo_code}")
+# #<div class="row display-flex align-flex-justify-content-center verification-code">613</div>
+
+# time.sleep(10)
+
+# driver.quit()
 
 
-# class webscrape(commands.Cog):
+class webscrape(commands.Cog):
 
-# 	@app_commands.command(name="webscrape", description="Asynchronously access the Club Management System")
-# 	async def webscrape(self, innteraction: discord.Interaction):
-# 		driver = uc.Chrome(version_main=144)
-# 		driver.get("https://cms.union.rpi.edu/login/password/")
+	@app_commands.command(name="webscrape", description="Asynchronously access the Club Management System")
+	async def webscrape(self, innteraction: discord.Interaction):
+		
+		await interaction.followup.send("WARNING: This command is currently incomplete.")
+		
+		options = uc.ChromeOptions()
+		options.add_argument("--no-sandbox")
+		options.add_argument("--disable-dev-shm-usage")
+		options.add_argument("--disable-gpu")
+		options.add_argument("--headless=new")
 
-# 		# click RCS Login button
-# 		login_button_obj = driver.find_element(By.XPATH, "//div[@id='content-wrap']/div[@id='content']//div[@id='login-panel']/div[@class='panel-body']/a")
-# 		login_button_obj.click()
-# 		login_button_obj = None
-# 		time.sleep(1.5)
+		driver = uc.Chrome(version_main=121, options=options)
 
-# 		# get username input, input username
-# 		username_input_obj = driver.find_element(By.XPATH, "//form/input[@id='username']")
-# 		username = str(input("Username: "))
-# 		username_input_obj.send_keys(username)
+		# driver = uc.Chrome(version_main=144)
+		driver.get("https://cms.union.rpi.edu/login/password/")
 
-# 		# click login button to show password input
-# 		login_button_obj = driver.find_element(By.XPATH, "//form/div/button")
-# 		login_button_obj.click()
-# 		login_button_obj = None
-# 		time.sleep(1.5)
+		# click RCS Login button
+		login_button_obj = driver.find_element(By.XPATH, "//div[@id='content-wrap']/div[@id='content']//div[@id='login-panel']/div[@class='panel-body']/a")
+		login_button_obj.click()
+		login_button_obj = None
+		time.sleep(1.5)
 
-# 		# get password input, input password
-# 		password_input_obj = driver.find_element(By.XPATH, "//form/input[@id='password']")
-# 		password = getpass("Password: ")
-# 		password_input_obj.send_keys(password)
+		# get username input, input username
+		username_input_obj = driver.find_element(By.XPATH, "//form/input[@id='username']")
+		username = str(input("Username: "))
+		username_input_obj.send_keys(username)
 
-# 		# re-get login button, login
-# 		login_button_obj = driver.find_element(By.XPATH, "//form/div/button")
-# 		login_button_obj.click()
+		# click login button to show password input
+		login_button_obj = driver.find_element(By.XPATH, "//form/div/button")
+		login_button_obj.click()
+		login_button_obj = None
+		time.sleep(1.5)
 
-# 		# receive duo code
+		# get password input, input password
+		password_input_obj = driver.find_element(By.XPATH, "//form/input[@id='password']")
+		password = getpass("Password: ")
+		password_input_obj.send_keys(password)
 
-# 		time.sleep(10)
+		# re-get login button, login
+		login_button_obj = driver.find_element(By.XPATH, "//form/div/button")
+		login_button_obj.click()
 
-# 		driver.quit()
+		# receive duo code
+		time.sleep(5)
+		duo_code_div = driver.find_element(By.XPATH, "/html/body/div[1]/div/div[1]/div/div[2]/div[3]")
+		duo_code_div = driver.find_element(By.XPATH, "//div[@class='verification-code']")
+		duo_code_div = driver.find_element(By.XPATH, "//div[@class='app']")
+		duo_code_div = driver.find_element(By.XPATH, "//div[@class='app']/div[@class='main']")
+		duo_code_div = driver.find_element(By.XPATH, "//div[@class='app']/div[@class='main']//div[@class='verification-code']")
+
+		duo_code = duo_code_div.text()
+		print(f"DUO CODE: {duo_code}")
+		#<div class="row display-flex align-flex-justify-content-center verification-code">613</div>
+
+		time.sleep(10)
+
+		driver.quit()
+
+async def setup(bot: commands.Bot):
+	await bot.add_cog(webscrape(bot))
