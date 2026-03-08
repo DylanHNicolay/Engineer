@@ -88,6 +88,13 @@ class webscrape(commands.Cog):
         if response.content.lower() not in ("yes", "y"):
             return
 
+        # check that cms.union.rpi.edu is up
+        try:
+            requests.get('https://cms.union.rpi.edu/login/password/')
+        except Exception as exc:
+            await interaction.followup.send(f"Failed to connect to the club management website:\n```{str(exc)}```")
+            return
+
 
         try:
             options = uc.ChromeOptions()
