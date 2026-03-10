@@ -82,3 +82,64 @@ async def test_archive_multiple_teams_found(cog):
         await cog.archive_team.callback(cog, interaction, team_nick="dup")
     msg = interaction.followup.send.call_args[0][0]
     assert "multiple" in msg.lower()
+    
+
+#Successful archive with role and channel
+
+@pytest.mark.asyncio
+async def test_archive_success_with_members(cog):
+    interaction = make_interaction()
+    guild = interaction.guild
+
+    member = MagicMock(spec=discord.Member)
+    member.remove_roles = AsyncMock()
+
+    role = MagicMock(spec=discord.Role)
+    role.members = [member]
+    role.delete = AsyncMock()
+
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.overwrites_for = MagicMock(return_value=discord.PermissionOverwrite())
+    channel.set_permissions = AsyncMock()
+    channel.edit = AsyncMock()
+    channel.mention = "#team-channel"
+
+    guild.get_channel = MagicMock(return_value=channel)
+    guild.get_role = MagicMock(return_value=role)
+
+    archives_cat = MagicMock(spec=discord.CategoryChannel)
+    archives_cat.name = "Archives"
+    archives_cat.mention = "#Archives"
+    guild.categories = [archives_cat]
+
+    fake_team = [{"team_id": 10, "team_nick": "Falcons", "channel_id": 100, "role_id": 200}]
+    db_calls = []
+
+    async def mock_db_execute(query, *args):
+        db_calls.append(query)
+        if "SELECT" in query:
+            return fake_team
+        return None
+
+    with patch("Teams.archive_team.db.execute", new=AsyncMock(side_effect=mock_db_execute)):
+        await cog.archive_team.callback(cog, interaction, team_nick="Falcons")
+
+    #DB was updated
+    assert any("UPDATE" in q for q in db_calls)
+
+    #Role was removed from member
+    member.remove_roles.assert_awaited_once_with(role)
+
+    #Channel permissions were set
+    channel.set_permissions.assert_awaited_once()
+
+    #Role was deleted
+    role.delete.assert_awaited_once()
+
+    #Channel moved to archives
+    channel.edit.assert_awaited_once()
+    assert channel.edit.call_args[1]["category"] == archives_cat
+
+    msg = interaction.followup.send.call_args[0][0]
+    assert "archived" in msg.lower()
+    assert "role deleted" in msg.lower()
