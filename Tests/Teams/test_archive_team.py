@@ -58,3 +58,27 @@ async def test_archive_no_admin_cog(cog):
     msg = interaction.response.send_message.call_args[0][0]
     assert "permission" in msg.lower()
 
+#Team not found 
+
+@pytest.mark.asyncio
+async def test_archive_team_not_found(cog):
+    interaction = make_interaction()
+    with patch("Teams.archive_team.db.execute", new=AsyncMock(return_value=[])):
+        await cog.archive_team.callback(cog, interaction, team_nick="ghost")
+    msg = interaction.followup.send.call_args[0][0]
+    assert "not found" in msg.lower()
+
+
+#Multiple teams found
+
+@pytest.mark.asyncio
+async def test_archive_multiple_teams_found(cog):
+    interaction = make_interaction()
+    fake_teams = [
+        {"team_id": 1, "team_nick": "dup", "channel_id": 1, "role_id": 1},
+        {"team_id": 2, "team_nick": "dup", "channel_id": 2, "role_id": 2},
+    ]
+    with patch("Teams.archive_team.db.execute", new=AsyncMock(return_value=fake_teams)):
+        await cog.archive_team.callback(cog, interaction, team_nick="dup")
+    msg = interaction.followup.send.call_args[0][0]
+    assert "multiple" in msg.lower()
