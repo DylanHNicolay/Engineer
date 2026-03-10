@@ -143,3 +143,33 @@ async def test_archive_success_with_members(cog):
     msg = interaction.followup.send.call_args[0][0]
     assert "archived" in msg.lower()
     assert "role deleted" in msg.lower()
+
+#Archive without moving to archives
+
+@pytest.mark.asyncio
+async def test_archive_no_move_to_archives(cog):
+    interaction = make_interaction()
+    guild = interaction.guild
+
+    role = MagicMock(spec=discord.Role)
+    role.members = []
+    role.delete = AsyncMock()
+
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.edit = AsyncMock()
+
+    guild.get_channel = MagicMock(return_value=channel)
+    guild.get_role = MagicMock(return_value=role)
+
+    fake_team = [{"team_id": 5, "team_nick": "Eagles", "channel_id": 50, "role_id": 60}]
+
+    async def mock_db_execute(query, *args):
+        if "SELECT" in query:
+            return fake_team
+        return None
+
+    with patch("Teams.archive_team.db.execute", new=AsyncMock(side_effect=mock_db_execute)):
+        await cog.archive_team.callback(cog, interaction, team_nick="Eagles", move_to_archives=False)
+
+    #Channel should NOT be moved
+    channel.edit.assert_not_awaited()
