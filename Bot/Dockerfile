@@ -1,5 +1,7 @@
 FROM python:3.12-slim
 
+ENV PYTHONUNBUFFERED=1
+
 # Install ClamAV and download the latest virus definitions
 RUN apt-get update && apt-get install -y clamav --no-install-recommends && \
     rm -rf /var/lib/apt/lists/* && \
