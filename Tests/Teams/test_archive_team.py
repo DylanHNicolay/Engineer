@@ -173,3 +173,47 @@ async def test_archive_no_move_to_archives(cog):
 
     #Channel should NOT be moved
     channel.edit.assert_not_awaited()
+
+#Channel or role not found in guild
+
+@pytest.mark.asyncio
+async def test_archive_channel_not_found(cog):
+    interaction = make_interaction()
+    guild = interaction.guild
+    guild.get_channel = MagicMock(return_value=None)
+    guild.get_role = MagicMock(return_value=None)
+
+    fake_team = [{"team_id": 7, "team_nick": "Ghosts", "channel_id": 70, "role_id": 80}]
+
+    async def mock_db_execute(query, *args):
+        if "SELECT" in query:
+            return fake_team
+        return None
+
+    with patch("Teams.archive_team.db.execute", new=AsyncMock(side_effect=mock_db_execute)):
+        await cog.archive_team.callback(cog, interaction, team_nick="Ghosts")
+
+    msg = interaction.followup.send.call_args[0][0]
+    assert "archived" in msg.lower()
+    assert "not found" in msg.lower()
+
+
+#Autocomplete
+
+@pytest.mark.asyncio
+async def test_autocomplete_returns_choices(cog):
+    interaction = MagicMock()
+    fake_records = [{"team_nick": "Alpha"}, {"team_nick": "Apex"}]
+    with patch("Teams.archive_team.db.execute", new=AsyncMock(return_value=fake_records)):
+        choices = await cog.archive_team_autocomplete(interaction, "a")
+    assert len(choices) == 2
+    assert choices[0].name == "Alpha"
+    assert choices[1].name == "Apex"
+
+
+@pytest.mark.asyncio
+async def test_autocomplete_empty(cog):
+    interaction = MagicMock()
+    with patch("Teams.archive_team.db.execute", new=AsyncMock(return_value=[])):
+        choices = await cog.archive_team_autocomplete(interaction, "zzz")
+    assert choices == []
