@@ -25,7 +25,9 @@ class MyClient(commands.Bot):
         await self.load_extension("Admin.admin")
         await self.load_extension("Dues.set-dues")
         await self.load_extension("Dues.generate")
-        await self.load_extension("Backfill.backfill_test")
+        await self.load_extension("Commands.backfill")
+        await self.load_extension("Commands.year")
+
         await self.load_extension("utils.setup")
 
         # Then sync to the guild
