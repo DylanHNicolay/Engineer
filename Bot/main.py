@@ -28,7 +28,7 @@ class MyClient(commands.Bot):
         await self.load_extension("Webscrape.webscrape")
 
         # Then sync to the guild
-        guild = discord.Object(id=1470895554681765888)
+        guild = discord.Object(id=1281629365939208233)
         self.tree.copy_global_to(guild=guild)
         await self.tree.sync(guild=guild)
 
