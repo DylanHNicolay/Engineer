@@ -1,8 +1,16 @@
 {
   "name": "Engineer Bot",
-  "dockerComposeFile": ["../docker-compose.yml", "docker-compose.extend.yml"],
+  "dockerComposeFile": [
+    "../docker-compose.yml",
+    "docker-compose.extend.yml"
+  ],
   "service": "bot",
   "workspaceFolder": "/workspace",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      "moby": false
+    }
+  },
   "customizations": {
     "vscode": {
       "extensions": [
