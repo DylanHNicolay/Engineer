@@ -8,6 +8,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from utils.db import db
+from Admin.admin import Admin
 
 EXIT_KEYWORDS = {"exit", "(exit)"}
 
@@ -54,12 +55,18 @@ class SemesterSelect(discord.ui.View):
         min_values=1,
         max_values=1,
     )
-    async def _select_callback(self, interaction: discord.Interaction, select: discord.ui.Select):
+    async def _select_callback(
+        self, interaction: discord.Interaction, select: discord.ui.Select
+    ):
         if interaction.user.id != self.user_id:
-            await interaction.response.send_message("This selection is not for you.", ephemeral=True)
+            await interaction.response.send_message(
+                "This selection is not for you.", ephemeral=True
+            )
             return
         self.value = select.values[0]
-        await interaction.response.send_message(f"Semester set to {self.value}.", ephemeral=True)
+        await interaction.response.send_message(
+            f"Semester set to {self.value}.", ephemeral=True
+        )
         self.stop()
 
 
@@ -69,16 +76,27 @@ class create_team(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    @app_commands.command(name="create_team", description="Walk through creating a new team interactively.")
+    @app_commands.command(
+        name="create_team",
+        description="Walk through creating a new team interactively.",
+    )
     async def create_team(self, interaction: discord.Interaction):
         guild = interaction.guild
         if guild is None:
-            await interaction.response.send_message("This command can only be used in a server.", ephemeral=True)
+            await interaction.response.send_message(
+                "This command can only be used in a server.", ephemeral=True
+            )
             return
 
-        admin_cog = interaction.client.get_cog("Admin")
-        if admin_cog is None or not await admin_cog.is_admin(interaction.user):  # type: ignore[attr-defined]
-            await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
+        admin_cog = self.bot.get_cog("Admin")
+        if (
+            not isinstance(admin_cog, Admin)
+            or not isinstance(interaction.user, discord.Member)
+            or not await admin_cog.is_admin(interaction.user)
+        ):
+            await interaction.response.send_message(
+                "You do not have permission to use this command.", ephemeral=True
+            )
             return
 
         await interaction.response.defer(ephemeral=True, thinking=True)
@@ -93,16 +111,23 @@ class create_team(commands.Cog):
             await interaction.followup.send(str(exc), ephemeral=True)
             return
         except Exception as exc:
-            await interaction.followup.send(f"An unexpected error occurred while collecting data: {exc}", ephemeral=True)
+            await interaction.followup.send(
+                f"An unexpected error occurred while collecting data: {exc}",
+                ephemeral=True,
+            )
             return
 
         try:
             warnings = await self._finalize_team(interaction, draft)
         except TeamCreationError as exc:
-            await interaction.followup.send(f"Team creation blocked: {exc}", ephemeral=True)
+            await interaction.followup.send(
+                f"Team creation blocked: {exc}", ephemeral=True
+            )
             return
         except Exception as exc:
-            await interaction.followup.send(f"Team creation failed: {exc}", ephemeral=True)
+            await interaction.followup.send(
+                f"Team creation failed: {exc}", ephemeral=True
+            )
             return
 
         summary = self._format_summary(draft)
@@ -111,15 +136,21 @@ class create_team(commands.Cog):
             summary = f"{summary}\n\nWarnings:\n{warning_lines}"
         await interaction.followup.send(summary, ephemeral=True)
 
-    async def _collect_team_data(self, interaction: discord.Interaction) -> TeamCreationData:
+    async def _collect_team_data(
+        self, interaction: discord.Interaction
+    ) -> TeamCreationData:
         draft = TeamCreationData()
         draft.team_nick = await self._prompt_team_nick(interaction)
         draft.role = await self._prompt_role(interaction)
         draft.category = await self._prompt_category(interaction)
         draft.channel = await self._prompt_channel(interaction, draft.category)
         draft.captain = await self._prompt_member(interaction, "captain")
-        draft.starters = await self._prompt_member_group(interaction, "starter", require_entry=True)
-        draft.substitutes = await self._prompt_member_group(interaction, "substitute", require_entry=False)
+        draft.starters = await self._prompt_member_group(
+            interaction, "starter", require_entry=True
+        )
+        draft.substitutes = await self._prompt_member_group(
+            interaction, "substitute", require_entry=False
+        )
         draft.starters = self._dedupe_members(draft.starters)
         draft.substitutes = self._dedupe_members(draft.substitutes)
         await self._ensure_captain_assignment(interaction, draft)
@@ -129,7 +160,9 @@ class create_team(commands.Cog):
         await self._review_answers(interaction, draft)
         return draft
 
-    async def _prompt_team_nick(self, interaction: discord.Interaction) -> Optional[str]:
+    async def _prompt_team_nick(
+        self, interaction: discord.Interaction
+    ) -> Optional[str]:
         def normalize(value: Optional[str]) -> Optional[str]:
             if value is None:
                 return None
@@ -150,7 +183,9 @@ class create_team(commands.Cog):
         async def parser(content: str, message: discord.Message) -> discord.Role:
             if message.role_mentions:
                 role = message.role_mentions[0]
-                if await self._confirm(interaction, f"Use existing role {role.mention}? (yes/no)"):
+                if await self._confirm(
+                    interaction, f"Use existing role {role.mention}? (yes/no)"
+                ):
                     return role
                 raise ValidationError("Role selection cancelled. Provide another role.")
 
@@ -158,19 +193,30 @@ class create_team(commands.Cog):
             if not role_name:
                 raise ValidationError("Please provide a role name or mention.")
 
-            existing = discord.utils.find(lambda r: r.name.lower() == role_name.lower(), guild.roles)
+            existing = discord.utils.find(
+                lambda r: r.name.lower() == role_name.lower(), guild.roles
+            )
             if existing:
-                if await self._confirm(interaction, f"Assign existing role {existing.mention}? (yes/no)"):
+                if await self._confirm(
+                    interaction, f"Assign existing role {existing.mention}? (yes/no)"
+                ):
                     return existing
                 raise ValidationError("Role selection cancelled. Provide another role.")
 
-            if not await self._confirm(interaction, f"No role named `{role_name}` exists. Create it now? (yes/no)"):
+            if not await self._confirm(
+                interaction,
+                f"No role named `{role_name}` exists. Create it now? (yes/no)",
+            ):
                 raise ValidationError("Role creation aborted. Provide another role.")
 
             try:
-                return await guild.create_role(name=role_name, reason="Team creation wizard role")
+                return await guild.create_role(
+                    name=role_name, reason="Team creation wizard role"
+                )
             except discord.Forbidden as exc:
-                raise ValidationError(f"Missing permissions to create the `{role_name}` role: {exc}")
+                raise ValidationError(
+                    f"Missing permissions to create the `{role_name}` role: {exc}"
+                )
             except discord.HTTPException as exc:
                 raise ValidationError(f"Discord rejected the role creation: {exc}")
 
@@ -182,7 +228,9 @@ class create_team(commands.Cog):
         assert isinstance(role, discord.Role)
         return role
 
-    async def _prompt_category(self, interaction: discord.Interaction) -> discord.CategoryChannel:
+    async def _prompt_category(
+        self, interaction: discord.Interaction
+    ) -> discord.CategoryChannel:
         guild = interaction.guild
         assert guild is not None
 
@@ -192,20 +240,34 @@ class create_team(commands.Cog):
             if cleaned.isdigit():
                 target = discord.utils.get(guild.categories, id=int(cleaned))
             if target is None:
-                target = discord.utils.find(lambda c: c.name.lower() == cleaned.lower(), guild.categories)
+                target = discord.utils.find(
+                    lambda c: c.name.lower() == cleaned.lower(), guild.categories
+                )
 
             if target:
-                if await self._confirm(interaction, f"Use existing category `{target.name}`? (yes/no)"):
+                if await self._confirm(
+                    interaction, f"Use existing category `{target.name}`? (yes/no)"
+                ):
                     return target
-                raise ValidationError("Category selection cancelled. Provide another category.")
+                raise ValidationError(
+                    "Category selection cancelled. Provide another category."
+                )
 
-            if not await self._confirm(interaction, f"Create a new category named `{cleaned}`? (yes/no)"):
-                raise ValidationError("Category creation aborted. Provide another category.")
+            if not await self._confirm(
+                interaction, f"Create a new category named `{cleaned}`? (yes/no)"
+            ):
+                raise ValidationError(
+                    "Category creation aborted. Provide another category."
+                )
 
             try:
-                return await guild.create_category(name=cleaned, reason="Team creation wizard category")
+                return await guild.create_category(
+                    name=cleaned, reason="Team creation wizard category"
+                )
             except discord.Forbidden as exc:
-                raise ValidationError(f"Missing permissions to create category `{cleaned}`: {exc}")
+                raise ValidationError(
+                    f"Missing permissions to create category `{cleaned}`: {exc}"
+                )
             except discord.HTTPException as exc:
                 raise ValidationError(f"Discord rejected the category creation: {exc}")
 
@@ -229,10 +291,16 @@ class create_team(commands.Cog):
             if message.channel_mentions:
                 channel = message.channel_mentions[0]
                 if isinstance(channel, discord.TextChannel):
-                    if await self._confirm(interaction, f"Use existing channel {channel.mention}? (yes/no)"):
+                    if await self._confirm(
+                        interaction, f"Use existing channel {channel.mention}? (yes/no)"
+                    ):
                         return channel
-                    raise ValidationError("Channel selection cancelled. Provide another channel.")
-                raise ValidationError("Only text channels are supported. Mention a text channel or provide a name.")
+                    raise ValidationError(
+                        "Channel selection cancelled. Provide another channel."
+                    )
+                raise ValidationError(
+                    "Only text channels are supported. Mention a text channel or provide a name."
+                )
 
             cleaned = content.strip()
             target: Optional[discord.TextChannel] = None
@@ -241,15 +309,27 @@ class create_team(commands.Cog):
                 if isinstance(maybe_channel, discord.TextChannel):
                     target = maybe_channel
             if target is None:
-                target = discord.utils.find(lambda ch: isinstance(ch, discord.TextChannel) and ch.name.lower() == cleaned.lower(), guild.text_channels)
+                target = discord.utils.find(
+                    lambda ch: isinstance(ch, discord.TextChannel)
+                    and ch.name.lower() == cleaned.lower(),
+                    guild.text_channels,
+                )
 
             if target:
-                if await self._confirm(interaction, f"Use existing channel {target.mention}? (yes/no)"):
+                if await self._confirm(
+                    interaction, f"Use existing channel {target.mention}? (yes/no)"
+                ):
                     return target
-                raise ValidationError("Channel selection cancelled. Provide another channel.")
+                raise ValidationError(
+                    "Channel selection cancelled. Provide another channel."
+                )
 
-            if not await self._confirm(interaction, f"Create a new text channel named `{cleaned}`? (yes/no)"):
-                raise ValidationError("Channel creation aborted. Provide another channel.")
+            if not await self._confirm(
+                interaction, f"Create a new text channel named `{cleaned}`? (yes/no)"
+            ):
+                raise ValidationError(
+                    "Channel creation aborted. Provide another channel."
+                )
 
             try:
                 return await guild.create_text_channel(
@@ -258,7 +338,9 @@ class create_team(commands.Cog):
                     reason="Team creation wizard channel",
                 )
             except discord.Forbidden as exc:
-                raise ValidationError(f"Missing permissions to create channel `{cleaned}`: {exc}")
+                raise ValidationError(
+                    f"Missing permissions to create channel `{cleaned}`: {exc}"
+                )
             except discord.HTTPException as exc:
                 raise ValidationError(f"Discord rejected the channel creation: {exc}")
 
@@ -270,7 +352,9 @@ class create_team(commands.Cog):
         assert isinstance(channel, discord.TextChannel)
         return channel
 
-    async def _prompt_member(self, interaction: discord.Interaction, label: str) -> discord.Member:
+    async def _prompt_member(
+        self, interaction: discord.Interaction, label: str
+    ) -> discord.Member:
         guild = interaction.guild
         assert guild is not None
 
@@ -289,9 +373,13 @@ class create_team(commands.Cog):
                         raise ValidationError(f"Could not fetch member: {exc}")
 
             if member is None:
-                raise ValidationError("Could not resolve that user. Mention them or provide their ID.")
+                raise ValidationError(
+                    "Could not resolve that user. Mention them or provide their ID."
+                )
 
-            if await self._confirm(interaction, f"Use {member.mention} as the {label}? (yes/no)"):
+            if await self._confirm(
+                interaction, f"Use {member.mention} as the {label}? (yes/no)"
+            ):
                 return member
             raise ValidationError("Selection cancelled. Provide another user.")
 
@@ -313,7 +401,9 @@ class create_team(commands.Cog):
         guild = interaction.guild
         assert guild is not None
 
-        async def parser(content: str, message: discord.Message) -> List[discord.Member]:
+        async def parser(
+            content: str, message: discord.Message
+        ) -> List[discord.Member]:
             entries: List[discord.Member] = []
             seen = set()
 
@@ -336,7 +426,9 @@ class create_team(commands.Cog):
                         except discord.NotFound:
                             member = None
                         except discord.HTTPException as exc:
-                            raise ValidationError(f"Failed to fetch member {discord_id}: {exc}")
+                            raise ValidationError(
+                                f"Failed to fetch member {discord_id}: {exc}"
+                            )
                     add_member(member)
 
             if not entries:
@@ -373,17 +465,23 @@ class create_team(commands.Cog):
                 raise ValidationError("Year must be between 2000 and 2100.")
             return year
 
-        year = await self._ask_question(interaction, "Enter the competition year (e.g., 2025).", parser=parser)
+        year = await self._ask_question(
+            interaction, "Enter the competition year (e.g., 2025).", parser=parser
+        )
         assert isinstance(year, int)
         return year
 
     async def _prompt_semester(self, interaction: discord.Interaction) -> str:
         view = SemesterSelect(interaction.user.id)
-        message = await interaction.followup.send("Select the semester.", view=view, ephemeral=True)
+        message = await interaction.followup.send(
+            "Select the semester.", view=view, ephemeral=True
+        )
 
         exit_task = asyncio.create_task(self._wait_for_exit_signal(interaction))
         view_task = asyncio.create_task(view.wait())
-        done, pending = await asyncio.wait({exit_task, view_task}, return_when=asyncio.FIRST_COMPLETED)
+        done, pending = await asyncio.wait(
+            {exit_task, view_task}, return_when=asyncio.FIRST_COMPLETED
+        )
         for task in pending:
             task.cancel()
 
@@ -404,7 +502,9 @@ class create_team(commands.Cog):
     async def _prompt_seniority(self, interaction: discord.Interaction) -> int:
         async def parser(content: str, _: discord.Message) -> int:
             if not content.isdigit():
-                raise ValidationError("Please provide a numeric seniority level (e.g., 1).")
+                raise ValidationError(
+                    "Please provide a numeric seniority level (e.g., 1)."
+                )
             return int(content)
 
         seniority = await self._ask_question(
@@ -415,15 +515,21 @@ class create_team(commands.Cog):
         assert isinstance(seniority, int)
         return seniority
 
-    async def _review_answers(self, interaction: discord.Interaction, draft: TeamCreationData) -> None:
+    async def _review_answers(
+        self, interaction: discord.Interaction, draft: TeamCreationData
+    ) -> None:
         field_map = {
             "team_nick": self._prompt_team_nick,
             "role": self._prompt_role,
             "category": self._prompt_category,
             "channel": lambda i: self._prompt_channel(i, draft.category),
             "captain": lambda i: self._prompt_member(i, "captain"),
-            "starters": lambda i: self._prompt_member_group(i, "starter", require_entry=True),
-            "substitutes": lambda i: self._prompt_member_group(i, "substitute", require_entry=False),
+            "starters": lambda i: self._prompt_member_group(
+                i, "starter", require_entry=True
+            ),
+            "substitutes": lambda i: self._prompt_member_group(
+                i, "substitute", require_entry=False
+            ),
             "year": self._prompt_year,
             "semester": self._prompt_semester,
             "seniority": self._prompt_seniority,
@@ -435,7 +541,9 @@ class create_team(commands.Cog):
                 "Type the field name to edit (team_nick, role, category, channel, captain, starters, substitutes, year, semester, seniority)"
                 " or `confirm` to continue."
             )
-            await interaction.followup.send(f"{summary}\n\n{instructions}", ephemeral=True)
+            await interaction.followup.send(
+                f"{summary}\n\n{instructions}", ephemeral=True
+            )
 
             message = await self._wait_for_reply(interaction)
             content = message.content.strip()
@@ -447,7 +555,9 @@ class create_team(commands.Cog):
 
             handler = field_map.get(content.lower())
             if handler is None:
-                await interaction.followup.send("Unknown field. Please try again.", ephemeral=True)
+                await interaction.followup.send(
+                    "Unknown field. Please try again.", ephemeral=True
+                )
                 continue
 
             result = await handler(interaction)
@@ -472,8 +582,18 @@ class create_team(commands.Cog):
             elif content.lower() == "seniority":
                 draft.seniority = result
 
-    async def _finalize_team(self, interaction: discord.Interaction, draft: TeamCreationData) -> List[str]:
-        assert draft.role and draft.channel and draft.category and draft.captain and draft.year and draft.semester and draft.seniority is not None
+    async def _finalize_team(
+        self, interaction: discord.Interaction, draft: TeamCreationData
+    ) -> List[str]:
+        assert (
+            draft.role
+            and draft.channel
+            and draft.category
+            and draft.captain
+            and draft.year
+            and draft.semester
+            and draft.seniority is not None
+        )
         warnings: List[str] = []
 
         async def db_transaction(connection):
@@ -550,9 +670,13 @@ class create_team(commands.Cog):
             try:
                 await member.add_roles(draft.role, reason="Team creation assignment")
             except discord.Forbidden:
-                warnings.append(f"Missing permission to assign role to {member.display_name}.")
+                warnings.append(
+                    f"Missing permission to assign role to {member.display_name}."
+                )
             except discord.HTTPException as exc:
-                warnings.append(f"Failed to assign role to {member.display_name}: {exc}")
+                warnings.append(
+                    f"Failed to assign role to {member.display_name}: {exc}"
+                )
 
         return warnings
 
@@ -575,7 +699,9 @@ class create_team(commands.Cog):
             if parser is None:
                 if content:
                     return content
-                await interaction.followup.send("Please provide a response or type N/A.", ephemeral=True)
+                await interaction.followup.send(
+                    "Please provide a response or type N/A.", ephemeral=True
+                )
                 continue
             try:
                 return await parser(content, message)
@@ -593,14 +719,23 @@ class create_team(commands.Cog):
                 return True
             if content in {"no", "n"}:
                 return False
-            await interaction.followup.send("Reply with yes or no (or type `(Exit)` to cancel).", ephemeral=True)
+            await interaction.followup.send(
+                "Reply with yes or no (or type `(Exit)` to cancel).", ephemeral=True
+            )
 
-    async def _wait_for_reply(self, interaction: discord.Interaction) -> discord.Message:
+    async def _wait_for_reply(
+        self, interaction: discord.Interaction
+    ) -> discord.Message:
         def check(message: discord.Message) -> bool:
-            return message.author.id == interaction.user.id and message.channel.id == interaction.channel_id
+            return (
+                message.author.id == interaction.user.id
+                and message.channel.id == interaction.channel_id
+            )
 
         try:
-            return await self.bot.wait_for("message", timeout=self.REPLY_TIMEOUT, check=check)
+            return await self.bot.wait_for(
+                "message", timeout=self.REPLY_TIMEOUT, check=check
+            )
         except asyncio.TimeoutError:
             raise ConversationCancelled("Timed out waiting for a response.")
 
@@ -623,7 +758,9 @@ class create_team(commands.Cog):
 
     def _format_summary(self, draft: TeamCreationData) -> str:
         starters = ", ".join(member.display_name for member in draft.starters) or "None"
-        substitutes = ", ".join(member.display_name for member in draft.substitutes) or "None"
+        substitutes = (
+            ", ".join(member.display_name for member in draft.substitutes) or "None"
+        )
         return (
             "**Team Creation Summary**\n"
             f"- Team Nick: {draft.team_nick or 'N/A'}\n"
@@ -638,7 +775,9 @@ class create_team(commands.Cog):
             f"- Seniority: {draft.seniority if draft.seniority is not None else 'Not set'}"
         )
 
-    def _dedupe_members(self, members: Iterable[discord.Member]) -> List[discord.Member]:
+    def _dedupe_members(
+        self, members: Iterable[discord.Member]
+    ) -> List[discord.Member]:
         seen = set()
         unique: List[discord.Member] = []
         for member in members:
@@ -648,7 +787,9 @@ class create_team(commands.Cog):
             unique.append(member)
         return unique
 
-    async def _ensure_captain_assignment(self, interaction: discord.Interaction, draft: TeamCreationData) -> None:
+    async def _ensure_captain_assignment(
+        self, interaction: discord.Interaction, draft: TeamCreationData
+    ) -> None:
         if draft.captain is None:
             return
         captain_id = draft.captain.id
