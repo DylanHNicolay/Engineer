@@ -1,0 +1,5 @@
+services:
+  bot:
+    volumes:
+      - .:/workspace:cached
+    command: sleep infinity
