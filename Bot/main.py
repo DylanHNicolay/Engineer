@@ -30,7 +30,7 @@ class MyClient(commands.Bot):
 
         # Then sync to the guild
         guild = discord.Object(id=1481037920499400704)
-        self.tree.copy_global_to(guild=guild)
+        # self.tree.copy_global_to(guild=guild)
         await self.tree.sync(guild=guild)
 
     async def on_ready(self):
