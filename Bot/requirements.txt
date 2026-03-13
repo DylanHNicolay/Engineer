@@ -1,4 +1,8 @@
 discord.py
 asyncpg
-openpyxl
+openpyxl 
+setuptools
+requests
+undetected_chromedriver==3.5.5
+selenium==4.40.0
 black 
