@@ -361,7 +361,13 @@ class create_team(commands.Cog):
         async def parser(content: str, message: discord.Message) -> discord.Member:
             member: Optional[discord.Member] = None
             if message.mentions:
-                member = message.mentions[0]
+                first = message.mentions[0]
+                if isinstance(first, discord.Member):
+                    member = first
+                else:
+                    raise ValidationError(
+                        "Could not resolve that user as a server member. They must be in this server."
+                    )
             elif content.strip().isdigit():
                 member = guild.get_member(int(content.strip()))
                 if member is None:
@@ -412,8 +418,9 @@ class create_team(commands.Cog):
                     entries.append(member)
                     seen.add(member.id)
 
-            for member in message.mentions:
-                add_member(member)
+            for m in message.mentions:
+                if isinstance(m, discord.Member):
+                    add_member(m)
 
             tokens = [tok for tok in re.split(r"[\s,]+", content.strip()) if tok]
             for token in tokens:
@@ -454,6 +461,7 @@ class create_team(commands.Cog):
         if result is None:
             return []
 
+        assert isinstance(result, list)
         return result
 
     async def _prompt_year(self, interaction: discord.Interaction) -> int:
@@ -474,7 +482,7 @@ class create_team(commands.Cog):
     async def _prompt_semester(self, interaction: discord.Interaction) -> str:
         view = SemesterSelect(interaction.user.id)
         message = await interaction.followup.send(
-            "Select the semester.", view=view, ephemeral=True
+            "Select the semester.", view=view, ephemeral=True, wait=True
         )
 
         exit_task = asyncio.create_task(self._wait_for_exit_signal(interaction))
@@ -518,11 +526,18 @@ class create_team(commands.Cog):
     async def _review_answers(
         self, interaction: discord.Interaction, draft: TeamCreationData
     ) -> None:
+        async def _reprompt_channel(i: discord.Interaction) -> discord.TextChannel:
+            if draft.category is None:
+                raise ValidationError(
+                    "A category must be set before re-prompting the channel."
+                )
+            return await self._prompt_channel(i, draft.category)
+
         field_map = {
             "team_nick": self._prompt_team_nick,
             "role": self._prompt_role,
             "category": self._prompt_category,
-            "channel": lambda i: self._prompt_channel(i, draft.category),
+            "channel": _reprompt_channel,
             "captain": lambda i: self._prompt_member(i, "captain"),
             "starters": lambda i: self._prompt_member_group(
                 i, "starter", require_entry=True
@@ -586,15 +601,23 @@ class create_team(commands.Cog):
         self, interaction: discord.Interaction, draft: TeamCreationData
     ) -> List[str]:
         assert (
-            draft.role
-            and draft.channel
-            and draft.category
-            and draft.captain
-            and draft.year
-            and draft.semester
+            draft.role is not None
+            and draft.channel is not None
+            and draft.category is not None
+            and draft.captain is not None
+            and draft.year is not None
+            and draft.semester is not None
             and draft.seniority is not None
         )
         warnings: List[str] = []
+
+        role = draft.role
+        channel = draft.channel
+        category = draft.category
+        captain = draft.captain
+        year = draft.year
+        semester = draft.semester
+        seniority = draft.seniority
 
         async def db_transaction(connection):
             conflict = await connection.fetch(
@@ -603,9 +626,9 @@ class create_team(commands.Cog):
                 FROM teams
                 WHERE role_id = $1 AND category_id = $2 AND channel_id = $3 AND archived IS NOT TRUE
                 """,
-                draft.role.id,
-                draft.category.id,
-                draft.channel.id,
+                role.id,
+                category.id,
+                channel.id,
             )
             if conflict:
                 raise TeamCreationError(
@@ -619,13 +642,13 @@ class create_team(commands.Cog):
                 RETURNING team_id
                 """,
                 draft.team_nick,
-                draft.role.id,
-                draft.channel.id,
-                draft.category.id,
-                draft.captain.id,
-                draft.year,
-                draft.semester,
-                draft.seniority,
+                role.id,
+                channel.id,
+                category.id,
+                captain.id,
+                year,
+                semester,
+                seniority,
             )
             if not team_rows:
                 raise TeamCreationError("Failed to insert the team record.")
@@ -653,7 +676,7 @@ class create_team(commands.Cog):
             for member in draft.starters + draft.substitutes:
                 await upsert_player(member.id)
 
-            await upsert_player(draft.captain.id)
+            await upsert_player(captain.id)
 
             for member in draft.starters:
                 await upsert_member(member.id, "starter")
@@ -663,12 +686,12 @@ class create_team(commands.Cog):
         await db.run_in_transaction(db_transaction)
 
         # Assign the team role to everyone involved.
-        involved_members = {draft.captain, *draft.starters, *draft.substitutes}
+        involved_members = {captain, *draft.starters, *draft.substitutes}
         for member in involved_members:
             if member is None:
                 continue
             try:
-                await member.add_roles(draft.role, reason="Team creation assignment")
+                await member.add_roles(role, reason="Team creation assignment")
             except discord.Forbidden:
                 warnings.append(
                     f"Missing permission to assign role to {member.display_name}."
