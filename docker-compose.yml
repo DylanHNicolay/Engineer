@@ -9,11 +9,10 @@ services:
       - bot-network
 
   db:
-    image: postgres:16-alpine
+    build:
+      context: .
+      dockerfile: Database/Dockerfile
     env_file: .env
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     restart: unless-stopped
     networks:
       - bot-network
