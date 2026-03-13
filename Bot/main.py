@@ -26,10 +26,13 @@ class MyClient(commands.Bot):
         await self.load_extension("Admin.admin")
         await self.load_extension("Dues.set-dues")
         await self.load_extension("Dues.generate")
+        await self.load_extension("Commands.backfill")
+        await self.load_extension("Commands.year")
+        await self.load_extension("utils.setup")
         await self.load_extension("Webscrape.webscrape")
 
         # Then sync to the guild
-        guild = discord.Object(id=1281629365939208233)
+        guild = discord.Object(id=1476324737016660079)  # Replace with your guild ID
         self.tree.copy_global_to(guild=guild)
         await self.tree.sync(guild=guild)
 
