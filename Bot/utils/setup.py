@@ -1,6 +1,5 @@
 import discord
 from utils.db import db
-from utils.user_init import add_user
 
 async def _init_guild_db(guild: discord.Guild):
     """Initializes the guild in the database."""
