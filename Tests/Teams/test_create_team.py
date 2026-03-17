@@ -61,3 +61,37 @@ def make_message(content: str, author_id: int = 1, channel_id: int = 999, mentio
     msg.role_mentions = role_mentions or []
     msg.channel_mentions = channel_mentions or []
     return msg
+
+# Guard tests – create_team command
+
+
+@pytest.mark.asyncio
+async def test_create_team_no_guild(cog):
+    interaction = make_interaction(has_guild=False)
+    interaction.client.get_cog = MagicMock(return_value=None)
+    await cog.create_team.callback(cog, interaction)
+    interaction.response.send_message.assert_awaited_once()
+    msg = interaction.response.send_message.call_args[0][0]
+    assert "server" in msg.lower()
+
+
+@pytest.mark.asyncio
+async def test_create_team_no_permission(cog):
+    interaction = make_interaction(is_admin=False)
+    await cog.create_team.callback(cog, interaction)
+    interaction.response.send_message.assert_awaited_once()
+    msg = interaction.response.send_message.call_args[0][0]
+    assert "permission" in msg.lower()
+
+
+@pytest.mark.asyncio
+async def test_create_team_no_admin_cog(cog):
+    interaction = make_interaction()
+    interaction.client.get_cog = MagicMock(return_value=None)
+    await cog.create_team.callback(cog, interaction)
+    interaction.response.send_message.assert_awaited_once()
+    msg = interaction.response.send_message.call_args[0][0]
+    assert "permission" in msg.lower()
+
+
+ 
