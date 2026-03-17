@@ -93,5 +93,57 @@ async def test_create_team_no_admin_cog(cog):
     msg = interaction.response.send_message.call_args[0][0]
     assert "permission" in msg.lower()
 
+# _should_exit
+ 
+
+def test_should_exit_keywords(cog):
+    assert cog._should_exit("exit") is True
+    assert cog._should_exit("EXIT") is True
+    assert cog._should_exit("(exit)") is True
+    assert cog._should_exit("(EXIT)") is True
+
+
+def test_should_exit_non_keywords(cog):
+    assert cog._should_exit("hello") is False
+    assert cog._should_exit("") is False
+    assert cog._should_exit("yes") is False
+
+
+def test_should_exit_strips_whitespace(cog):
+    assert cog._should_exit("  exit  ") is True
+
+
+ 
+# _dedupe_members
+ 
+
+def test_dedupe_members_removes_duplicates(cog):
+    m1 = MagicMock(spec=discord.Member)
+    m1.id = 1
+    m2 = MagicMock(spec=discord.Member)
+    m2.id = 2
+    m3 = MagicMock(spec=discord.Member)
+    m3.id = 1  # duplicate of m1
+
+    result = cog._dedupe_members([m1, m2, m3])
+    assert len(result) == 2
+    assert result[0].id == 1
+    assert result[1].id == 2
+
+
+def test_dedupe_members_preserves_order(cog):
+    members = []
+    for i in [3, 1, 2]:
+        m = MagicMock(spec=discord.Member)
+        m.id = i
+        members.append(m)
+
+    result = cog._dedupe_members(members)
+    assert [m.id for m in result] == [3, 1, 2]
+
+
+def test_dedupe_members_empty(cog):
+    assert cog._dedupe_members([]) == []
+
 
  
