@@ -145,5 +145,55 @@ def test_dedupe_members_preserves_order(cog):
 def test_dedupe_members_empty(cog):
     assert cog._dedupe_members([]) == []
 
+# _format_summary
+ 
+
+def test_format_summary_full_draft(cog):
+    role = MagicMock(spec=discord.Role)
+    role.mention = "@role"
+    category = MagicMock(spec=discord.CategoryChannel)
+    category.name = "Cat"
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.mention = "#chan"
+    captain = MagicMock(spec=discord.Member)
+    captain.mention = "@cap"
+    starter = MagicMock(spec=discord.Member)
+    starter.display_name = "StarterA"
+    sub = MagicMock(spec=discord.Member)
+    sub.display_name = "SubB"
+
+    draft = TeamCreationData(
+        team_nick="Falcons",
+        role=role,
+        category=category,
+        channel=channel,
+        captain=captain,
+        starters=[starter],
+        substitutes=[sub],
+        year=2025,
+        semester="Fall",
+        seniority=3,
+    )
+
+    summary = cog._format_summary(draft)
+    assert "Falcons" in summary
+    assert "@role" in summary
+    assert "Cat" in summary
+    assert "#chan" in summary
+    assert "@cap" in summary
+    assert "StarterA" in summary
+    assert "SubB" in summary
+    assert "2025" in summary
+    assert "Fall" in summary
+    assert "3" in summary
+
+
+def test_format_summary_empty_draft(cog):
+    draft = TeamCreationData()
+    summary = cog._format_summary(draft)
+    assert "N/A" in summary
+    assert "Not set" in summary
+    assert "None" in summary
+
 
  
