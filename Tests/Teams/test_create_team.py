@@ -378,3 +378,114 @@ async def test_ask_question_parser_validation_error_retries(cog, bot):
     assert result == "ok"
     # Error message should have been sent for the bad input
     interaction.followup.send.assert_awaited()
+
+# _prompt_team_nick
+ 
+
+@pytest.mark.asyncio
+async def test_prompt_team_nick_returns_value(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(return_value=make_message("Falcons"))
+
+    result = await cog._prompt_team_nick(interaction)
+    assert result == "Falcons"
+
+
+@pytest.mark.asyncio
+async def test_prompt_team_nick_na_returns_none(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(return_value=make_message("N/A"))
+
+    result = await cog._prompt_team_nick(interaction)
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_prompt_team_nick_strips_whitespace(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(return_value=make_message("  Eagles  "))
+
+    result = await cog._prompt_team_nick(interaction)
+    assert result == "Eagles"
+
+
+ 
+# _prompt_year
+ 
+
+@pytest.mark.asyncio
+async def test_prompt_year_valid(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(return_value=make_message("2025"))
+
+    result = await cog._prompt_year(interaction)
+    assert result == 2025
+
+
+@pytest.mark.asyncio
+async def test_prompt_year_non_numeric_retries(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(side_effect=[
+        make_message("twenty-twenty-five"),
+        make_message("2025"),
+    ])
+
+    result = await cog._prompt_year(interaction)
+    assert result == 2025
+
+
+@pytest.mark.asyncio
+async def test_prompt_year_out_of_range_retries(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(side_effect=[
+        make_message("1999"),
+        make_message("2025"),
+    ])
+
+    result = await cog._prompt_year(interaction)
+    assert result == 2025
+
+
+@pytest.mark.asyncio
+async def test_prompt_year_exit_raises_cancelled(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(return_value=make_message("exit"))
+
+    with pytest.raises(ConversationCancelled):
+        await cog._prompt_year(interaction)
+
+
+ 
+# _prompt_seniority
+ 
+
+@pytest.mark.asyncio
+async def test_prompt_seniority_valid(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(return_value=make_message("3"))
+
+    result = await cog._prompt_seniority(interaction)
+    assert result == 3
+
+
+@pytest.mark.asyncio
+async def test_prompt_seniority_non_numeric_retries(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(side_effect=[
+        make_message("high"),
+        make_message("1"),
+    ])
+
+    result = await cog._prompt_seniority(interaction)
+    assert result == 1
+
+
+@pytest.mark.asyncio
+async def test_prompt_seniority_exit_raises_cancelled(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(return_value=make_message("exit"))
+
+    with pytest.raises(ConversationCancelled):
+        await cog._prompt_seniority(interaction)
+
+ 
