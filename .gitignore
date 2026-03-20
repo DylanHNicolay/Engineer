@@ -1,3 +1,5 @@
 .env
 .venv
 .notes
+.pytest_cache
+/Tests/Teams/__pycache__
