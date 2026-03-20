@@ -276,3 +276,105 @@ async def test_wait_for_reply_timeout_raises_cancelled(cog, bot):
 
     with pytest.raises(ConversationCancelled):
         await cog._wait_for_reply(interaction)
+
+#_confirm
+
+@pytest.mark.asyncio
+async def test_confirm_yes(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(return_value=make_message("yes"))
+
+    result = await cog._confirm(interaction, "Do you confirm?")
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_confirm_no(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(return_value=make_message("no"))
+
+    result = await cog._confirm(interaction, "Do you confirm?")
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_confirm_exit_raises_cancelled(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(return_value=make_message("exit"))
+
+    with pytest.raises(ConversationCancelled):
+        await cog._confirm(interaction, "Do you confirm?")
+
+
+@pytest.mark.asyncio
+async def test_confirm_invalid_then_yes(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(side_effect=[
+        make_message("maybe"),
+        make_message("y"),
+    ])
+
+    result = await cog._confirm(interaction, "Do you confirm?")
+    assert result is True
+    assert interaction.followup.send.await_count >= 2
+
+
+ 
+# _ask_question
+ 
+
+@pytest.mark.asyncio
+async def test_ask_question_no_parser_returns_content(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(return_value=make_message("my answer"))
+
+    result = await cog._ask_question(interaction, "What?")
+    assert result == "my answer"
+
+
+@pytest.mark.asyncio
+async def test_ask_question_exit_raises_cancelled(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(return_value=make_message("exit"))
+
+    with pytest.raises(ConversationCancelled):
+        await cog._ask_question(interaction, "What?")
+
+
+@pytest.mark.asyncio
+async def test_ask_question_allow_na_returns_none(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(return_value=make_message("N/A"))
+
+    result = await cog._ask_question(interaction, "What?", allow_na=True)
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_ask_question_parser_called(cog, bot):
+    interaction = make_interaction()
+    msg = make_message("42")
+    bot.wait_for = AsyncMock(return_value=msg)
+
+    parser = AsyncMock(return_value=42)
+    result = await cog._ask_question(interaction, "What?", parser=parser)
+    assert result == 42
+    parser.assert_awaited_once_with("42", msg)
+
+
+@pytest.mark.asyncio
+async def test_ask_question_parser_validation_error_retries(cog, bot):
+    interaction = make_interaction()
+    bad_msg = make_message("bad")
+    good_msg = make_message("good")
+    bot.wait_for = AsyncMock(side_effect=[bad_msg, good_msg])
+
+    async def parser(content, message):
+        if content == "bad":
+            raise ValidationError("Bad input")
+        return "ok"
+
+    result = await cog._ask_question(interaction, "What?", parser=parser)
+    assert result == "ok"
+    # Error message should have been sent for the bad input
+    interaction.followup.send.assert_awaited()
