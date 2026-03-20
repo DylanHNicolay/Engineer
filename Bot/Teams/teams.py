@@ -18,7 +18,7 @@
 #         if not await admin_cog.is_admin(interaction.user):
 #             await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
 #             return False
-        
+
 #         return True
 #     return app_commands.check(predicate)
 

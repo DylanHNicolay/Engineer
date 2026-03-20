@@ -2,6 +2,7 @@ import asyncio
 import asyncpg
 import os
 
+
 class Database:
     def __init__(self):
         self._pool = None
@@ -16,14 +17,19 @@ class Database:
                     user=os.getenv("POSTGRES_USER"),
                     password=os.getenv("POSTGRES_PASSWORD"),
                     database=os.getenv("POSTGRES_DB"),
-                    host='db'
+                    host="db",
                 )
                 asyncio.create_task(self._worker())
                 print("Database connection successful.")
                 return
-            except (ConnectionRefusedError, asyncpg.exceptions.CannotConnectNowError) as e:
+            except (
+                ConnectionRefusedError,
+                asyncpg.exceptions.CannotConnectNowError,
+            ) as e:
                 if i < retries - 1:
-                    print(f"Database connection failed. Retrying in {delay} seconds... ({i+1}/{retries})")
+                    print(
+                        f"Database connection failed. Retrying in {delay} seconds... ({i+1}/{retries})"
+                    )
                     await asyncio.sleep(delay)
                 else:
                     print("Database connection failed after multiple retries.")
@@ -34,7 +40,7 @@ class Database:
             future, task_type, data = await self.queue.get()
             try:
                 if self._pool is None:
-                    await asyncio.sleep(0.1) # Wait for pool to be initialized
+                    await asyncio.sleep(0.1)  # Wait for pool to be initialized
                     # Re-queue the item if the pool is not ready
                     await self.queue.put((future, task_type, data))
                     self.queue.task_done()
@@ -43,11 +49,11 @@ class Database:
                 async with self._pool.acquire() as connection:
                     async with connection.transaction():
                         try:
-                            if task_type == 'query':
+                            if task_type == "query":
                                 query, params = data
                                 result = await connection.fetch(query, *params)
                                 future.set_result(result)
-                            elif task_type == 'callback':
+                            elif task_type == "callback":
                                 callback = data
                                 result = await callback(connection)
                                 future.set_result(result)
@@ -62,7 +68,7 @@ class Database:
 
     async def execute(self, query, *params):
         future = asyncio.get_event_loop().create_future()
-        await self.queue.put((future, 'query', (query, params)))
+        await self.queue.put((future, "query", (query, params)))
         return await future
 
     async def run_in_transaction(self, callback):
@@ -71,12 +77,13 @@ class Database:
         The callback should accept a single argument: the database connection.
         """
         future = asyncio.get_event_loop().create_future()
-        await self.queue.put((future, 'callback', callback))
+        await self.queue.put((future, "callback", callback))
         return await future
 
     async def close(self):
         await self.queue.join()
         if self._pool:
             await self._pool.close()
+
 
 db = Database()
