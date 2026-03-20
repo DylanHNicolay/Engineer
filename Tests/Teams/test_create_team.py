@@ -196,4 +196,83 @@ def test_format_summary_empty_draft(cog):
     assert "None" in summary
 
 
+ # _ensure_captain_assignment
  
+
+@pytest.mark.asyncio
+async def test_ensure_captain_already_starter(cog):
+    interaction = make_interaction()
+    captain = MagicMock(spec=discord.Member)
+    captain.id = 10
+    captain.display_name = "Cap"
+
+    starter = MagicMock(spec=discord.Member)
+    starter.id = 10
+
+    draft = TeamCreationData(captain=captain, starters=[starter], substitutes=[])
+    await cog._ensure_captain_assignment(interaction, draft)
+
+    interaction.followup.send.assert_not_awaited()
+    assert len(draft.starters) == 1
+
+
+@pytest.mark.asyncio
+async def test_ensure_captain_already_substitute(cog):
+    interaction = make_interaction()
+    captain = MagicMock(spec=discord.Member)
+    captain.id = 10
+    captain.display_name = "Cap"
+
+    sub = MagicMock(spec=discord.Member)
+    sub.id = 10
+
+    draft = TeamCreationData(captain=captain, starters=[], substitutes=[sub])
+    await cog._ensure_captain_assignment(interaction, draft)
+
+    interaction.followup.send.assert_not_awaited()
+    assert len(draft.starters) == 0
+
+
+@pytest.mark.asyncio
+async def test_ensure_captain_added_to_starters(cog):
+    interaction = make_interaction()
+    captain = MagicMock(spec=discord.Member)
+    captain.id = 10
+    captain.display_name = "Cap"
+
+    draft = TeamCreationData(captain=captain, starters=[], substitutes=[])
+    await cog._ensure_captain_assignment(interaction, draft)
+
+    interaction.followup.send.assert_awaited_once()
+    assert captain in draft.starters
+
+
+@pytest.mark.asyncio
+async def test_ensure_captain_none_captain(cog):
+    interaction = make_interaction()
+    draft = TeamCreationData(captain=None, starters=[], substitutes=[])
+    await cog._ensure_captain_assignment(interaction, draft)
+    interaction.followup.send.assert_not_awaited()
+
+
+ 
+# _wait_for_reply
+ 
+
+@pytest.mark.asyncio
+async def test_wait_for_reply_returns_message(cog, bot):
+    interaction = make_interaction()
+    msg = make_message("hello")
+    bot.wait_for = AsyncMock(return_value=msg)
+
+    result = await cog._wait_for_reply(interaction)
+    assert result is msg
+
+
+@pytest.mark.asyncio
+async def test_wait_for_reply_timeout_raises_cancelled(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(side_effect=asyncio.TimeoutError)
+
+    with pytest.raises(ConversationCancelled):
+        await cog._wait_for_reply(interaction)
