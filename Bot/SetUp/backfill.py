@@ -123,10 +123,11 @@ class Backfill(commands.Cog):
             }
             
             await _backfill_users(interaction.guild, role_objects, engineer_channel, assign_verified_role=True)
-            return "Backfill process complete. Check the engineer channel for detailed logs."
+            await interaction.followup.send( "Backfill process complete. Check the engineer channel for detailed logs.")
         
         except Exception as e:
             await interaction.followup.send(f"An error occurred: {e}")
+        
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Backfill(bot))
