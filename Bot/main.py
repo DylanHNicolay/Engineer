@@ -28,6 +28,8 @@ class MyClient(commands.Bot):
         await self.load_extension("Dues.generate")
         await self.load_extension("Webscrape.webscrape")
 
+        await self.load_extension("SetUp.backfill")
+
         # Then sync to the guild
         guild = discord.Object(id=1486100107110776854) # Replace with your specific server's ID
         self.tree.copy_global_to(guild=guild)
