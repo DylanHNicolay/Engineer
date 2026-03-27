@@ -577,3 +577,69 @@ async def test_prompt_role_exit_raises_cancelled(cog, bot):
         await cog._prompt_role(interaction)
 
 
+# _prompt_category
+
+
+@pytest.mark.asyncio
+async def test_prompt_category_existing_by_name(cog, bot):
+    interaction = make_interaction()
+    category = MagicMock(spec=discord.CategoryChannel)
+    category.name = "Teams"
+    interaction.guild.categories = [category]
+    bot.wait_for = AsyncMock(side_effect=[make_message("Teams"), make_message("yes")])
+
+    result = await cog._prompt_category(interaction)
+    assert result is category
+
+
+@pytest.mark.asyncio
+async def test_prompt_category_existing_by_id(cog, bot):
+    interaction = make_interaction()
+    category = MagicMock(spec=discord.CategoryChannel)
+    category.id = 42
+    category.name = "Teams"
+    interaction.guild.categories = [category]
+    bot.wait_for = AsyncMock(side_effect=[make_message("42"), make_message("yes")])
+
+    result = await cog._prompt_category(interaction)
+    assert result is category
+
+
+@pytest.mark.asyncio
+async def test_prompt_category_create_new(cog, bot):
+    interaction = make_interaction()
+    interaction.guild.categories = []
+    new_cat = MagicMock(spec=discord.CategoryChannel)
+    interaction.guild.create_category = AsyncMock(return_value=new_cat)
+    bot.wait_for = AsyncMock(side_effect=[make_message("NewCat"), make_message("yes")])
+
+    result = await cog._prompt_category(interaction)
+    assert result is new_cat
+    interaction.guild.create_category.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_prompt_category_decline_create_retries(cog, bot):
+    interaction = make_interaction()
+    interaction.guild.categories = []
+    new_cat = MagicMock(spec=discord.CategoryChannel)
+    interaction.guild.create_category = AsyncMock(return_value=new_cat)
+    bot.wait_for = AsyncMock(side_effect=[
+        make_message("NewCat"), make_message("no"),    # decline
+        make_message("NewCat"), make_message("yes"),   # accept on retry
+    ])
+
+    result = await cog._prompt_category(interaction)
+    assert result is new_cat
+
+
+@pytest.mark.asyncio
+async def test_prompt_category_exit_raises_cancelled(cog, bot):
+    interaction = make_interaction()
+    interaction.guild.categories = []
+    bot.wait_for = AsyncMock(return_value=make_message("exit"))
+
+    with pytest.raises(ConversationCancelled):
+        await cog._prompt_category(interaction)
+
+
