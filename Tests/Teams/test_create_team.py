@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch, call
 import discord
 
 from Teams.create_team import create_team, TeamCreationData, ConversationCancelled, ValidationError
+from Admin.admin import Admin
 
 
 
@@ -488,4 +489,91 @@ async def test_prompt_seniority_exit_raises_cancelled(cog, bot):
     with pytest.raises(ConversationCancelled):
         await cog._prompt_seniority(interaction)
 
- 
+
+# _prompt_role
+
+
+@pytest.mark.asyncio
+async def test_prompt_role_mention_confirm_yes(cog, bot):
+    interaction = make_interaction()
+    role = MagicMock(spec=discord.Role)
+    role.mention = "@TestRole"
+    msg = make_message("@TestRole", role_mentions=[role])
+    # first wait_for: role mention; second wait_for: "yes" confirm
+    bot.wait_for = AsyncMock(side_effect=[msg, make_message("yes")])
+
+    result = await cog._prompt_role(interaction)
+    assert result is role
+
+
+@pytest.mark.asyncio
+async def test_prompt_role_mention_confirm_no_retries(cog, bot):
+    interaction = make_interaction()
+    role1 = MagicMock(spec=discord.Role)
+    role1.mention = "@Role1"
+    role2 = MagicMock(spec=discord.Role)
+    role2.mention = "@Role2"
+    msg_mention1 = make_message("@Role1", role_mentions=[role1])
+    msg_mention2 = make_message("@Role2", role_mentions=[role2])
+    # decline role1, accept role2
+    bot.wait_for = AsyncMock(side_effect=[msg_mention1, make_message("no"), msg_mention2, make_message("yes")])
+
+    result = await cog._prompt_role(interaction)
+    assert result is role2
+
+
+@pytest.mark.asyncio
+async def test_prompt_role_existing_by_name(cog, bot):
+    interaction = make_interaction()
+    role = MagicMock(spec=discord.Role)
+    role.name = "TeamRole"
+    role.mention = "@TeamRole"
+    interaction.guild.roles = [role]
+    bot.wait_for = AsyncMock(side_effect=[make_message("TeamRole"), make_message("yes")])
+
+    result = await cog._prompt_role(interaction)
+    assert result is role
+
+
+@pytest.mark.asyncio
+async def test_prompt_role_create_new(cog, bot):
+    interaction = make_interaction()
+    interaction.guild.roles = []
+    new_role = MagicMock(spec=discord.Role)
+    interaction.guild.create_role = AsyncMock(return_value=new_role)
+    bot.wait_for = AsyncMock(side_effect=[make_message("NewRole"), make_message("yes")])
+
+    result = await cog._prompt_role(interaction)
+    assert result is new_role
+    interaction.guild.create_role.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_prompt_role_decline_create_retries(cog, bot):
+    interaction = make_interaction()
+    interaction.guild.roles = []
+    new_role = MagicMock(spec=discord.Role)
+    interaction.guild.create_role = AsyncMock(return_value=new_role)
+    # decline creation, then provide a role mention
+    role = MagicMock(spec=discord.Role)
+    role.mention = "@FallbackRole"
+    msg_with_role = make_message("@FallbackRole", role_mentions=[role])
+    bot.wait_for = AsyncMock(side_effect=[
+        make_message("NewRole"), make_message("no"),   # decline create
+        msg_with_role, make_message("yes"),             # accept role mention
+    ])
+
+    result = await cog._prompt_role(interaction)
+    assert result is role
+
+
+@pytest.mark.asyncio
+async def test_prompt_role_exit_raises_cancelled(cog, bot):
+    interaction = make_interaction()
+    interaction.guild.roles = []
+    bot.wait_for = AsyncMock(return_value=make_message("exit"))
+
+    with pytest.raises(ConversationCancelled):
+        await cog._prompt_role(interaction)
+
+
