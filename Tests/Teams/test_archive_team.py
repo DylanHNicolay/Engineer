@@ -5,6 +5,16 @@ import discord
 from Teams.archive_team import ArchiveTeam
 
 
+def _pass_admin_guard(cog, interaction):
+    """Configure cog.bot and interaction.user so the admin guard passes."""
+    user = MagicMock(spec=discord.Member)
+    user.id = 1
+    interaction.user = user
+    admin_mock = MagicMock()
+    admin_mock.is_admin = AsyncMock(return_value=True)
+    cog.bot.get_cog = MagicMock(return_value=admin_mock)
+
+
 @pytest.fixture
 def cog():
     return ArchiveTeam(MagicMock())
@@ -63,6 +73,7 @@ async def test_archive_no_admin_cog(cog):
 @pytest.mark.asyncio
 async def test_archive_team_not_found(cog):
     interaction = make_interaction()
+    _pass_admin_guard(cog, interaction)
     with patch("Teams.archive_team.db.execute", new=AsyncMock(return_value=[])):
         await cog.archive_team.callback(cog, interaction, team_nick="ghost")
     msg = interaction.followup.send.call_args[0][0]
@@ -74,6 +85,7 @@ async def test_archive_team_not_found(cog):
 @pytest.mark.asyncio
 async def test_archive_multiple_teams_found(cog):
     interaction = make_interaction()
+    _pass_admin_guard(cog, interaction)
     fake_teams = [
         {"team_id": 1, "team_nick": "dup", "channel_id": 1, "role_id": 1},
         {"team_id": 2, "team_nick": "dup", "channel_id": 2, "role_id": 2},
@@ -89,6 +101,7 @@ async def test_archive_multiple_teams_found(cog):
 @pytest.mark.asyncio
 async def test_archive_success_with_members(cog):
     interaction = make_interaction()
+    _pass_admin_guard(cog, interaction)
     guild = interaction.guild
 
     member = MagicMock(spec=discord.Member)
@@ -179,6 +192,7 @@ async def test_archive_no_move_to_archives(cog):
 @pytest.mark.asyncio
 async def test_archive_channel_not_found(cog):
     interaction = make_interaction()
+    _pass_admin_guard(cog, interaction)
     guild = interaction.guild
     guild.get_channel = MagicMock(return_value=None)
     guild.get_role = MagicMock(return_value=None)
