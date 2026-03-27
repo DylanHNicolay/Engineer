@@ -643,3 +643,76 @@ async def test_prompt_category_exit_raises_cancelled(cog, bot):
         await cog._prompt_category(interaction)
 
 
+# _prompt_channel
+
+
+@pytest.mark.asyncio
+async def test_prompt_channel_mention_confirm_yes(cog, bot):
+    interaction = make_interaction()
+    category = MagicMock(spec=discord.CategoryChannel)
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.mention = "#team"
+    msg = make_message("#team", channel_mentions=[channel])
+    bot.wait_for = AsyncMock(side_effect=[msg, make_message("yes")])
+
+    result = await cog._prompt_channel(interaction, category)
+    assert result is channel
+
+
+@pytest.mark.asyncio
+async def test_prompt_channel_by_name(cog, bot):
+    interaction = make_interaction()
+    category = MagicMock(spec=discord.CategoryChannel)
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.name = "team-chat"
+    channel.mention = "#team-chat"
+    interaction.guild.text_channels = [channel]
+    bot.wait_for = AsyncMock(side_effect=[make_message("team-chat"), make_message("yes")])
+
+    result = await cog._prompt_channel(interaction, category)
+    assert result is channel
+
+
+@pytest.mark.asyncio
+async def test_prompt_channel_create_new(cog, bot):
+    interaction = make_interaction()
+    category = MagicMock(spec=discord.CategoryChannel)
+    interaction.guild.text_channels = []
+    new_channel = MagicMock(spec=discord.TextChannel)
+    interaction.guild.create_text_channel = AsyncMock(return_value=new_channel)
+    bot.wait_for = AsyncMock(side_effect=[make_message("new-channel"), make_message("yes")])
+
+    result = await cog._prompt_channel(interaction, category)
+    assert result is new_channel
+    interaction.guild.create_text_channel.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_prompt_channel_non_text_mention_retries(cog, bot):
+    interaction = make_interaction()
+    category = MagicMock(spec=discord.CategoryChannel)
+    voice_channel = MagicMock(spec=discord.VoiceChannel)  # not a TextChannel
+    msg_voice = make_message("#voice", channel_mentions=[voice_channel])
+    new_channel = MagicMock(spec=discord.TextChannel)
+    interaction.guild.text_channels = []
+    interaction.guild.create_text_channel = AsyncMock(return_value=new_channel)
+    bot.wait_for = AsyncMock(side_effect=[
+        msg_voice,                           # voice channel mention → rejected
+        make_message("new-channel"), make_message("yes"),  # create new
+    ])
+
+    result = await cog._prompt_channel(interaction, category)
+    assert result is new_channel
+
+
+@pytest.mark.asyncio
+async def test_prompt_channel_exit_raises_cancelled(cog, bot):
+    interaction = make_interaction()
+    category = MagicMock(spec=discord.CategoryChannel)
+    interaction.guild.text_channels = []
+    bot.wait_for = AsyncMock(return_value=make_message("exit"))
+
+    with pytest.raises(ConversationCancelled):
+        await cog._prompt_channel(interaction, category)
+
+
