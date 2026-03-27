@@ -1005,3 +1005,105 @@ async def test_review_answers_edit_year_updates_draft(cog, bot):
     assert draft.year == 2026
 
 
+# _finalize_team
+
+
+@pytest.mark.asyncio
+async def test_finalize_team_happy_path(cog):
+    from Teams.create_team import TeamCreationError
+
+    interaction = make_interaction()
+    role = MagicMock(spec=discord.Role)
+    role.id = 1
+    category = MagicMock(spec=discord.CategoryChannel)
+    category.id = 2
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.id = 3
+    captain = MagicMock(spec=discord.Member)
+    captain.id = 10
+    captain.display_name = "Cap"
+    captain.add_roles = AsyncMock()
+
+    draft = TeamCreationData(
+        role=role, category=category, channel=channel, captain=captain,
+        starters=[], substitutes=[], year=2025, semester="Fall", seniority=1,
+    )
+
+    mock_conn = AsyncMock()
+    mock_conn.fetch = AsyncMock(side_effect=[[], [{"team_id": 42}]])
+    mock_conn.execute = AsyncMock()
+
+    async def fake_transaction(fn):
+        await fn(mock_conn)
+
+    with patch("Teams.create_team.db") as mock_db:
+        mock_db.run_in_transaction = AsyncMock(side_effect=fake_transaction)
+        warnings = await cog._finalize_team(interaction, draft)
+
+    assert warnings == []
+    captain.add_roles.assert_awaited_once_with(role, reason="Team creation assignment")
+
+
+@pytest.mark.asyncio
+async def test_finalize_team_conflict_raises_error(cog):
+    from Teams.create_team import TeamCreationError
+
+    interaction = make_interaction()
+    role = MagicMock(spec=discord.Role)
+    role.id = 1
+    category = MagicMock(spec=discord.CategoryChannel)
+    category.id = 2
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.id = 3
+    captain = MagicMock(spec=discord.Member)
+    captain.id = 10
+
+    draft = TeamCreationData(
+        role=role, category=category, channel=channel, captain=captain,
+        starters=[], substitutes=[], year=2025, semester="Fall", seniority=1,
+    )
+
+    mock_conn = AsyncMock()
+    mock_conn.fetch = AsyncMock(return_value=[{"team_id": 99}])  # conflict exists
+
+    async def fake_transaction(fn):
+        await fn(mock_conn)
+
+    with patch("Teams.create_team.db") as mock_db:
+        mock_db.run_in_transaction = AsyncMock(side_effect=fake_transaction)
+        with pytest.raises(TeamCreationError):
+            await cog._finalize_team(interaction, draft)
+
+
+@pytest.mark.asyncio
+async def test_finalize_team_role_forbidden_produces_warning(cog):
+    interaction = make_interaction()
+    role = MagicMock(spec=discord.Role)
+    role.id = 1
+    category = MagicMock(spec=discord.CategoryChannel)
+    category.id = 2
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.id = 3
+    captain = MagicMock(spec=discord.Member)
+    captain.id = 10
+    captain.display_name = "Cap"
+    captain.add_roles = AsyncMock(side_effect=discord.Forbidden(MagicMock(), "forbidden"))
+
+    draft = TeamCreationData(
+        role=role, category=category, channel=channel, captain=captain,
+        starters=[], substitutes=[], year=2025, semester="Fall", seniority=1,
+    )
+
+    mock_conn = AsyncMock()
+    mock_conn.fetch = AsyncMock(side_effect=[[], [{"team_id": 42}]])
+    mock_conn.execute = AsyncMock()
+
+    async def fake_transaction(fn):
+        await fn(mock_conn)
+
+    with patch("Teams.create_team.db") as mock_db:
+        mock_db.run_in_transaction = AsyncMock(side_effect=fake_transaction)
+        warnings = await cog._finalize_team(interaction, draft)
+
+    assert len(warnings) == 1
+    assert "Cap" in warnings[0]
