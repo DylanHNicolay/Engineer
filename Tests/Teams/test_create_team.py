@@ -865,3 +865,143 @@ async def test_prompt_member_group_exit_raises_cancelled(cog, bot):
         await cog._prompt_member_group(interaction, "starter", require_entry=True)
 
 
+# _prompt_semester
+
+
+@pytest.mark.asyncio
+async def test_prompt_semester_returns_value(cog, bot):
+    interaction = make_interaction()
+
+    message_mock = MagicMock()
+    message_mock.edit = AsyncMock()
+
+    async def fake_followup_send(*args, **kwargs):
+        view = kwargs.get("view")
+        if view is not None:
+            view.value = "Fall"
+            view.stop()
+        return message_mock
+
+    interaction.followup.send = AsyncMock(side_effect=fake_followup_send)
+
+    with patch.object(cog, "_wait_for_exit_signal", new=AsyncMock(return_value=False)):
+        result = await cog._prompt_semester(interaction)
+
+    assert result == "Fall"
+
+
+@pytest.mark.asyncio
+async def test_prompt_semester_exit_raises_cancelled(cog, bot):
+    interaction = make_interaction()
+    message_mock = MagicMock()
+    message_mock.edit = AsyncMock()
+
+    async def fake_send(*args, **kwargs):
+        return message_mock
+    interaction.followup.send = AsyncMock(side_effect=fake_send)
+
+    with patch.object(cog, "_wait_for_exit_signal", new=AsyncMock(return_value=True)):
+        with pytest.raises(ConversationCancelled):
+            await cog._prompt_semester(interaction)
+
+
+@pytest.mark.asyncio
+async def test_prompt_semester_timeout_raises_cancelled(cog, bot):
+    interaction = make_interaction()
+    message_mock = MagicMock()
+    message_mock.edit = AsyncMock()
+
+    async def fake_send(*args, **kwargs):
+        return message_mock
+    interaction.followup.send = AsyncMock(side_effect=fake_send)
+
+    # exit signal never fires (returns False), view never gets a value → timeout
+    with patch.object(cog, "_wait_for_exit_signal", new=AsyncMock(return_value=False)):
+        with pytest.raises(ConversationCancelled):
+            await cog._prompt_semester(interaction)
+
+
+# _review_answers
+
+
+@pytest.mark.asyncio
+async def test_review_answers_confirm_returns(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(return_value=make_message("confirm"))
+
+    role = MagicMock(spec=discord.Role)
+    role.mention = "@R"
+    category = MagicMock(spec=discord.CategoryChannel)
+    category.name = "C"
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.mention = "#ch"
+    captain = MagicMock(spec=discord.Member)
+    captain.mention = "@cap"
+    draft = TeamCreationData(
+        role=role, category=category, channel=channel, captain=captain,
+        year=2025, semester="Fall", seniority=1,
+    )
+    await cog._review_answers(interaction, draft)  # should return without error
+
+
+@pytest.mark.asyncio
+async def test_review_answers_exit_raises_cancelled(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(return_value=make_message("exit"))
+
+    draft = TeamCreationData()
+    with pytest.raises(ConversationCancelled):
+        await cog._review_answers(interaction, draft)
+
+
+@pytest.mark.asyncio
+async def test_review_answers_unknown_field_sends_error_then_confirm(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(side_effect=[
+        make_message("invalidfield"),
+        make_message("confirm"),
+    ])
+
+    role = MagicMock(spec=discord.Role)
+    role.mention = "@R"
+    category = MagicMock(spec=discord.CategoryChannel)
+    category.name = "C"
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.mention = "#ch"
+    captain = MagicMock(spec=discord.Member)
+    captain.mention = "@cap"
+    draft = TeamCreationData(
+        role=role, category=category, channel=channel, captain=captain,
+        year=2025, semester="Fall", seniority=1,
+    )
+    await cog._review_answers(interaction, draft)
+    # Unknown field error + summary = at least 3 sends (initial summary, error, second summary)
+    assert interaction.followup.send.await_count >= 3
+
+
+@pytest.mark.asyncio
+async def test_review_answers_edit_year_updates_draft(cog, bot):
+    interaction = make_interaction()
+    # First loop: type "year" to edit it; year prompt returns 2026; second loop: confirm
+    bot.wait_for = AsyncMock(side_effect=[
+        make_message("year"),       # choose to edit year field
+        make_message("2026"),       # new year value
+        make_message("confirm"),    # confirm the draft
+    ])
+
+    role = MagicMock(spec=discord.Role)
+    role.mention = "@R"
+    category = MagicMock(spec=discord.CategoryChannel)
+    category.name = "C"
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.mention = "#ch"
+    captain = MagicMock(spec=discord.Member)
+    captain.mention = "@cap"
+    draft = TeamCreationData(
+        role=role, category=category, channel=channel, captain=captain,
+        year=2025, semester="Fall", seniority=1,
+    )
+    await cog._review_answers(interaction, draft)
+    assert draft.year == 2026
+
+
