@@ -716,3 +716,152 @@ async def test_prompt_channel_exit_raises_cancelled(cog, bot):
         await cog._prompt_channel(interaction, category)
 
 
+# _prompt_member
+
+
+@pytest.mark.asyncio
+async def test_prompt_member_by_mention(cog, bot):
+    interaction = make_interaction()
+    member = MagicMock(spec=discord.Member)
+    member.mention = "@User"
+    msg = make_message("@User", mentions=[member])
+    bot.wait_for = AsyncMock(side_effect=[msg, make_message("yes")])
+
+    result = await cog._prompt_member(interaction, "captain")
+    assert result is member
+
+
+@pytest.mark.asyncio
+async def test_prompt_member_by_id(cog, bot):
+    interaction = make_interaction()
+    member = MagicMock(spec=discord.Member)
+    member.id = 12345
+    member.mention = "@User"
+    interaction.guild.get_member = MagicMock(return_value=member)
+    bot.wait_for = AsyncMock(side_effect=[make_message("12345"), make_message("yes")])
+
+    result = await cog._prompt_member(interaction, "captain")
+    assert result is member
+
+
+@pytest.mark.asyncio
+async def test_prompt_member_by_id_not_in_cache_fetches(cog, bot):
+    interaction = make_interaction()
+    member = MagicMock(spec=discord.Member)
+    member.id = 12345
+    member.mention = "@User"
+    interaction.guild.get_member = MagicMock(return_value=None)
+    interaction.guild.fetch_member = AsyncMock(return_value=member)
+    bot.wait_for = AsyncMock(side_effect=[make_message("12345"), make_message("yes")])
+
+    result = await cog._prompt_member(interaction, "captain")
+    assert result is member
+
+
+@pytest.mark.asyncio
+async def test_prompt_member_not_found_retries(cog, bot):
+    interaction = make_interaction()
+    interaction.guild.get_member = MagicMock(return_value=None)
+    interaction.guild.fetch_member = AsyncMock(side_effect=discord.NotFound(MagicMock(), "not found"))
+    member = MagicMock(spec=discord.Member)
+    member.mention = "@User"
+    msg_valid = make_message("@User", mentions=[member])
+    bot.wait_for = AsyncMock(side_effect=[make_message("99999"), msg_valid, make_message("yes")])
+
+    result = await cog._prompt_member(interaction, "captain")
+    assert result is member
+
+
+@pytest.mark.asyncio
+async def test_prompt_member_confirm_no_retries(cog, bot):
+    interaction = make_interaction()
+    member1 = MagicMock(spec=discord.Member)
+    member1.mention = "@User1"
+    member2 = MagicMock(spec=discord.Member)
+    member2.mention = "@User2"
+    msg1 = make_message("@User1", mentions=[member1])
+    msg2 = make_message("@User2", mentions=[member2])
+    bot.wait_for = AsyncMock(side_effect=[msg1, make_message("no"), msg2, make_message("yes")])
+
+    result = await cog._prompt_member(interaction, "captain")
+    assert result is member2
+
+
+@pytest.mark.asyncio
+async def test_prompt_member_exit_raises_cancelled(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(return_value=make_message("exit"))
+
+    with pytest.raises(ConversationCancelled):
+        await cog._prompt_member(interaction, "captain")
+
+
+# _prompt_member_group
+
+
+@pytest.mark.asyncio
+async def test_prompt_member_group_by_mentions(cog, bot):
+    interaction = make_interaction()
+    m1 = MagicMock(spec=discord.Member)
+    m1.id = 1
+    m1.display_name = "Alice"
+    m2 = MagicMock(spec=discord.Member)
+    m2.id = 2
+    m2.display_name = "Bob"
+    msg = make_message("@Alice @Bob", mentions=[m1, m2])
+    bot.wait_for = AsyncMock(side_effect=[msg, make_message("yes")])
+
+    result = await cog._prompt_member_group(interaction, "starter", require_entry=True)
+    assert len(result) == 2
+    assert m1 in result and m2 in result
+
+
+@pytest.mark.asyncio
+async def test_prompt_member_group_na_returns_empty(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(return_value=make_message("N/A"))
+
+    result = await cog._prompt_member_group(interaction, "substitute", require_entry=False)
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_prompt_member_group_no_valid_members_retries(cog, bot):
+    interaction = make_interaction()
+    interaction.guild.get_member = MagicMock(return_value=None)
+    interaction.guild.fetch_member = AsyncMock(side_effect=discord.NotFound(MagicMock(), "nf"))
+    m = MagicMock(spec=discord.Member)
+    m.id = 5
+    m.display_name = "Carol"
+    msg_valid = make_message("@Carol", mentions=[m])
+    bot.wait_for = AsyncMock(side_effect=[
+        make_message("99999"),         # no valid member → ValidationError → retry
+        msg_valid, make_message("yes"),
+    ])
+
+    result = await cog._prompt_member_group(interaction, "starter", require_entry=True)
+    assert m in result
+
+
+@pytest.mark.asyncio
+async def test_prompt_member_group_confirm_no_retries(cog, bot):
+    interaction = make_interaction()
+    m = MagicMock(spec=discord.Member)
+    m.id = 1
+    m.display_name = "Alice"
+    msg = make_message("@Alice", mentions=[m])
+    bot.wait_for = AsyncMock(side_effect=[msg, make_message("no"), msg, make_message("yes")])
+
+    result = await cog._prompt_member_group(interaction, "starter", require_entry=True)
+    assert m in result
+
+
+@pytest.mark.asyncio
+async def test_prompt_member_group_exit_raises_cancelled(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(return_value=make_message("exit"))
+
+    with pytest.raises(ConversationCancelled):
+        await cog._prompt_member_group(interaction, "starter", require_entry=True)
+
+
