@@ -1107,3 +1107,123 @@ async def test_finalize_team_role_forbidden_produces_warning(cog):
 
     assert len(warnings) == 1
     assert "Cap" in warnings[0]
+    
+    
+# create_team command – integration
+
+
+def make_admin_interaction():
+    """Make an interaction that passes the admin guard in create_team."""
+    interaction = make_interaction()
+    # interaction.user must be a discord.Member instance for isinstance check
+    user = MagicMock(spec=discord.Member)
+    user.id = 1
+    interaction.user = user
+    # cog.bot.get_cog must return an Admin-spec mock
+    admin_mock = MagicMock(spec=Admin)
+    admin_mock.is_admin = AsyncMock(return_value=True)
+    return interaction, admin_mock
+
+
+@pytest.mark.asyncio
+async def test_create_team_happy_path(cog):
+    interaction, admin_mock = make_admin_interaction()
+    cog.bot.get_cog = MagicMock(return_value=admin_mock)
+
+    role = MagicMock(spec=discord.Role)
+    role.mention = "@R"
+    category = MagicMock(spec=discord.CategoryChannel)
+    category.name = "C"
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.mention = "#ch"
+    captain = MagicMock(spec=discord.Member)
+    captain.mention = "@cap"
+    draft = TeamCreationData(
+        team_nick="Falcons", role=role, category=category, channel=channel,
+        captain=captain, starters=[], substitutes=[], year=2025, semester="Fall", seniority=1,
+    )
+
+    with patch.object(cog, "_collect_team_data", new=AsyncMock(return_value=draft)), \
+         patch.object(cog, "_finalize_team", new=AsyncMock(return_value=[])):
+        await cog.create_team.callback(cog, interaction)
+
+    interaction.response.defer.assert_awaited_once()
+    # Final summary should be sent
+    assert interaction.followup.send.await_count >= 2
+
+
+@pytest.mark.asyncio
+async def test_create_team_conversation_cancelled(cog):
+    interaction, admin_mock = make_admin_interaction()
+    cog.bot.get_cog = MagicMock(return_value=admin_mock)
+
+    with patch.object(cog, "_collect_team_data", new=AsyncMock(side_effect=ConversationCancelled("cancelled"))):
+        await cog.create_team.callback(cog, interaction)
+
+    sent_messages = [call.args[0] for call in interaction.followup.send.call_args_list if call.args]
+    assert any("cancelled" in m.lower() for m in sent_messages)
+
+
+@pytest.mark.asyncio
+async def test_create_team_unexpected_error_during_collect(cog):
+    interaction, admin_mock = make_admin_interaction()
+    cog.bot.get_cog = MagicMock(return_value=admin_mock)
+
+    with patch.object(cog, "_collect_team_data", new=AsyncMock(side_effect=RuntimeError("boom"))):
+        await cog.create_team.callback(cog, interaction)
+
+    sent_messages = [call.args[0] for call in interaction.followup.send.call_args_list if call.args]
+    assert any("unexpected" in m.lower() or "boom" in m.lower() for m in sent_messages)
+
+
+@pytest.mark.asyncio
+async def test_create_team_finalize_error(cog):
+    from Teams.create_team import TeamCreationError
+    interaction, admin_mock = make_admin_interaction()
+    cog.bot.get_cog = MagicMock(return_value=admin_mock)
+
+    role = MagicMock(spec=discord.Role)
+    role.mention = "@R"
+    category = MagicMock(spec=discord.CategoryChannel)
+    category.name = "C"
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.mention = "#ch"
+    captain = MagicMock(spec=discord.Member)
+    captain.mention = "@cap"
+    draft = TeamCreationData(
+        role=role, category=category, channel=channel, captain=captain,
+        year=2025, semester="Fall", seniority=1,
+    )
+
+    with patch.object(cog, "_collect_team_data", new=AsyncMock(return_value=draft)), \
+         patch.object(cog, "_finalize_team", new=AsyncMock(side_effect=TeamCreationError("conflict"))):
+        await cog.create_team.callback(cog, interaction)
+
+    sent_messages = [call.args[0] for call in interaction.followup.send.call_args_list if call.args]
+    assert any("conflict" in m.lower() or "blocked" in m.lower() for m in sent_messages)
+
+
+@pytest.mark.asyncio
+async def test_create_team_with_warnings(cog):
+    interaction, admin_mock = make_admin_interaction()
+    cog.bot.get_cog = MagicMock(return_value=admin_mock)
+
+    role = MagicMock(spec=discord.Role)
+    role.mention = "@R"
+    category = MagicMock(spec=discord.CategoryChannel)
+    category.name = "C"
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.mention = "#ch"
+    captain = MagicMock(spec=discord.Member)
+    captain.mention = "@cap"
+    draft = TeamCreationData(
+        role=role, category=category, channel=channel, captain=captain,
+        year=2025, semester="Fall", seniority=1,
+    )
+
+    with patch.object(cog, "_collect_team_data", new=AsyncMock(return_value=draft)), \
+         patch.object(cog, "_finalize_team", new=AsyncMock(return_value=["Missing permission for Alice."])):
+        await cog.create_team.callback(cog, interaction)
+
+    sent_messages = [call.args[0] for call in interaction.followup.send.call_args_list if call.args]
+    assert any("Warnings" in m or "Missing permission" in m for m in sent_messages)
