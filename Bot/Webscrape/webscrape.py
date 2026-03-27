@@ -10,6 +10,8 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from getpass import getpass
 
+from . import dialogue
+
 
 
 class webscrape(commands.Cog):
@@ -18,23 +20,15 @@ class webscrape(commands.Cog):
     async def webscrape(self, interaction: discord.Interaction, rcsid:str, password:str):
         print("Running Command:", flush=True)
         await interaction.response.defer(ephemeral=True)
-        await interaction.followup.send("WARNING: This command is currently incomplete. Are you sure you want to continue? (y / n)", ephemeral=True)
+        view = dialogue.ConfirmView()
+        await interaction.followup.send("WARNING: This command is currently incomplete. Are you sure you want to continue? (y / n)",
+                                        view=view, ephemeral=True)
 
-        def check(message: discord.Message) -> bool:
-            return (
-                message.author.id == interaction.user.id
-                and message.channel.id == interaction.channel_id
-            )
+        await view.wait()
 
-        try: # waiting for message
-            response = await interaction.client.wait_for('message', check=check, timeout=30.0) # timeout - how long bot waits for message (in seconds)
-        except asyncio.TimeoutError: # returning after timeout
-            print("NULL")
-            return
-
-        # if response is different than yes / y - return
-        if response.content.lower() not in ("yes", "y"):
-            print("NULL")
+        if view.value is not True:
+            print("...Command canceled")
+            await interaction.followup.send(f"Canceling command.")
             return
 
         print("Webscrape")
@@ -74,7 +68,7 @@ class webscrape(commands.Cog):
             login_button_obj = None
             await asyncio.sleep(1.5)
 
-            # get username input, input username
+            # get username input box, input username
             username_input_obj = driver.find_element(By.XPATH, "//form/input[@id='username']")
             print(f"username_input_obj = {username_input_obj}")
             # username = str(input("Username: "))
@@ -88,7 +82,7 @@ class webscrape(commands.Cog):
             login_button_obj = None
             await asyncio.sleep(1.5)
 
-            # get password input, input password
+            # get password input box, input password
             password_input_obj = driver.find_element(By.XPATH, "//form/input[@id='password']")
             print(f"password_input_obj = {password_input_obj}")
             # password = getpass("Password: ")
@@ -100,17 +94,18 @@ class webscrape(commands.Cog):
             login_button_obj.click()
             await asyncio.sleep(0.5)
 
+            # check if an "incorrect login info" <p>-tag has been generated.
             try:
                 incorrect_info = driver.find_element(By.XPATH, "//form/p")
-                await interaction.followup.send(f"While loging into CMS, threw error:\n ```{str(incorrect_info.text)}```", ephemeral=True)
+                await interaction.followup.send(f"While logging into CMS, threw error:\n ```{str(incorrect_info.text)}```", ephemeral=True)
                 return
             except:
                 pass
         except Exception as exc:
-            await interaction.followup.send(f"While logging in, threw error:\n ```{str(exc)}```", ephemeral=True)
+            await interaction.followup.send(f"While logging into CMS, threw error:\n ```{str(exc)}```", ephemeral=True)
             return
 
-        # receive duo code
+        # wait for duo redirect
         for x in range(7):
             if "duosecurity.com/frame/v4/auth/prompt" in driver.current_url:
                 print("duosecurity.com loaded")
@@ -118,28 +113,37 @@ class webscrape(commands.Cog):
             await asyncio.sleep(1)
         await asyncio.sleep(3)
 
+        # get duo code
         try:
             duo_code_div = driver.find_element(By.XPATH, "//div[@class='row display-flex align-flex-justify-content-center verification-code']")
             print("Found duo_code_div")
             duo_code = duo_code_div.text
             print(f"DUO CODE: {duo_code}")
+            await interaction.followup.send(f"Your DUO code is {duo_code}, please input your code to the DUO mobile app", ephemeral=True)
         except Exception as exc:
             await interaction.followup.send(f"While retrieving DUO code, threw error:\n ```{str(exc)}```", ephemeral=True)
             return
 
-        await interaction.followup.send(f"Your Duo code is {duo_code}, please input your code to the Duo mobile app", ephemeral=True)
 
-        while "duo" in driver.current_url and x in range(30):
+        # wait to be redirected from duo
+        while "duo" in driver.current_url and x in range(31):
             try:
+                # try to continue redirect
                 dont_trust_button = driver.find_element(By.ID, "dont-trust-browser-button")
                 dont_trust_button.click()
             except:
-                await asyncio.sleep(1)
+                # if redirecting from Duo takes >= 30 seconds / user does not input Duo code
+                if x == 30:
+                    await interaction.followup.send(f"While redirecting from DUO, threw error:\n ```Unable to redirect from DUO, stuck at {driver.current_url}```", ephemeral=True)
+                await asyncio.sleep(2)
         await asyncio.sleep(2)
         print(driver.current_url)
 
         if "cms.union.rpi.edu" in driver.current_url:
             await interaction.followup.send(f"You have succesfully logged into the Club Management System!", ephemeral=True)
+        else:
+            await interaction.followup.send(f"While redirecting from DUO, threw error:\n ```Bad redirect to {driver.current_url}```", ephemeral=True)
+            return
 
         await asyncio.sleep(10)
 
