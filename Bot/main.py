@@ -29,7 +29,7 @@ class MyClient(commands.Bot):
         await self.load_extension("Webscrape.webscrape")
 
         await self.load_extension("SetUp.backfill")
-        await self.load_extension("SetUp.year")
+        await self.load_extension("year")
 
         
         print("All extensions loaded.")
@@ -47,8 +47,6 @@ class MyClient(commands.Bot):
         for guild in self.guilds:
             print(f'Connected to target guild: {guild.name} (ID: {guild.id})')
             settings_records = await db.execute("SELECT * FROM server_settings WHERE guild_id = $1", guild.id)
-            if guild.id == 1281629365939208233:  #the main test server skip setup 
-                continue
 
             #Check if server settings exist for this guild, if not run setup
             if not settings_records:

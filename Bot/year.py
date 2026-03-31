@@ -2,7 +2,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from utils.db import db
-from role_utils import handle_role_change
+from utils.role_utils import handle_role_change
 
 class Year(commands.Cog):
     def __init__(self, bot: commands.Bot):
