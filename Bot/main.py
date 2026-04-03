@@ -20,9 +20,9 @@ class MyClient(commands.Bot):
         await db.connect()
 
         # Load extensions first so their commands are registered
-        await self.load_extension("Teams.create-team")
-        await self.load_extension("Teams.archive-team")
-        await self.load_extension("Teams.list-teams")
+        await self.load_extension("Teams.create_team")
+        await self.load_extension("Teams.archive_team")
+        await self.load_extension("Teams.list_teams")
         await self.load_extension("Admin.admin")
         await self.load_extension("Dues.set-dues")
         await self.load_extension("Dues.generate")

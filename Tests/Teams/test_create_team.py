@@ -1,0 +1,1229 @@
+import asyncio
+import pytest
+from unittest.mock import AsyncMock, MagicMock, patch, call
+import discord
+
+from Teams.create_team import create_team, TeamCreationData, ConversationCancelled, ValidationError
+from Admin.admin import Admin
+
+
+
+#Fixtures
+
+@pytest.fixture
+def bot():
+    b = MagicMock()
+    b.wait_for = AsyncMock()
+    return b
+
+
+@pytest.fixture
+def cog(bot):
+    return create_team(bot)
+
+
+def make_interaction(*, has_guild=True, is_admin=True):
+    interaction = MagicMock()
+    interaction.response = AsyncMock()
+    interaction.followup = MagicMock()
+    interaction.followup.send = AsyncMock()
+    interaction.channel_id = 999
+
+    if has_guild:
+        interaction.guild = MagicMock(spec=discord.Guild)
+        interaction.guild.roles = []
+        interaction.guild.categories = []
+        interaction.guild.text_channels = []
+    else:
+        interaction.guild = None
+
+    admin_cog = MagicMock()
+    admin_cog.is_admin = AsyncMock(return_value=is_admin)
+    interaction.client = MagicMock()
+    interaction.client.get_cog = MagicMock(return_value=admin_cog)
+
+    user = MagicMock()
+    user.id = 1
+    interaction.user = user
+
+    return interaction
+
+
+def make_message(content: str, author_id: int = 1, channel_id: int = 999, mentions=None, role_mentions=None, channel_mentions=None):
+    msg = MagicMock(spec=discord.Message)
+    msg.content = content
+    author = MagicMock()
+    author.id = author_id
+    msg.author = author
+    channel = MagicMock()
+    channel.id = channel_id
+    msg.channel = channel
+    msg.mentions = mentions or []
+    msg.role_mentions = role_mentions or []
+    msg.channel_mentions = channel_mentions or []
+    return msg
+
+# Guard tests – create_team command
+
+
+@pytest.mark.asyncio
+async def test_create_team_no_guild(cog):
+    interaction = make_interaction(has_guild=False)
+    interaction.client.get_cog = MagicMock(return_value=None)
+    await cog.create_team.callback(cog, interaction)
+    interaction.response.send_message.assert_awaited_once()
+    msg = interaction.response.send_message.call_args[0][0]
+    assert "server" in msg.lower()
+
+
+@pytest.mark.asyncio
+async def test_create_team_no_permission(cog):
+    interaction = make_interaction(is_admin=False)
+    await cog.create_team.callback(cog, interaction)
+    interaction.response.send_message.assert_awaited_once()
+    msg = interaction.response.send_message.call_args[0][0]
+    assert "permission" in msg.lower()
+
+
+@pytest.mark.asyncio
+async def test_create_team_no_admin_cog(cog):
+    interaction = make_interaction()
+    interaction.client.get_cog = MagicMock(return_value=None)
+    await cog.create_team.callback(cog, interaction)
+    interaction.response.send_message.assert_awaited_once()
+    msg = interaction.response.send_message.call_args[0][0]
+    assert "permission" in msg.lower()
+
+# _should_exit
+ 
+
+def test_should_exit_keywords(cog):
+    assert cog._should_exit("exit") is True
+    assert cog._should_exit("EXIT") is True
+    assert cog._should_exit("(exit)") is True
+    assert cog._should_exit("(EXIT)") is True
+
+
+def test_should_exit_non_keywords(cog):
+    assert cog._should_exit("hello") is False
+    assert cog._should_exit("") is False
+    assert cog._should_exit("yes") is False
+
+
+def test_should_exit_strips_whitespace(cog):
+    assert cog._should_exit("  exit  ") is True
+
+
+ 
+# _dedupe_members
+ 
+
+def test_dedupe_members_removes_duplicates(cog):
+    m1 = MagicMock(spec=discord.Member)
+    m1.id = 1
+    m2 = MagicMock(spec=discord.Member)
+    m2.id = 2
+    m3 = MagicMock(spec=discord.Member)
+    m3.id = 1  # duplicate of m1
+
+    result = cog._dedupe_members([m1, m2, m3])
+    assert len(result) == 2
+    assert result[0].id == 1
+    assert result[1].id == 2
+
+
+def test_dedupe_members_preserves_order(cog):
+    members = []
+    for i in [3, 1, 2]:
+        m = MagicMock(spec=discord.Member)
+        m.id = i
+        members.append(m)
+
+    result = cog._dedupe_members(members)
+    assert [m.id for m in result] == [3, 1, 2]
+
+
+def test_dedupe_members_empty(cog):
+    assert cog._dedupe_members([]) == []
+
+# _format_summary
+ 
+
+def test_format_summary_full_draft(cog):
+    role = MagicMock(spec=discord.Role)
+    role.mention = "@role"
+    category = MagicMock(spec=discord.CategoryChannel)
+    category.name = "Cat"
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.mention = "#chan"
+    captain = MagicMock(spec=discord.Member)
+    captain.mention = "@cap"
+    starter = MagicMock(spec=discord.Member)
+    starter.display_name = "StarterA"
+    sub = MagicMock(spec=discord.Member)
+    sub.display_name = "SubB"
+
+    draft = TeamCreationData(
+        team_nick="Falcons",
+        role=role,
+        category=category,
+        channel=channel,
+        captain=captain,
+        starters=[starter],
+        substitutes=[sub],
+        year=2025,
+        semester="Fall",
+        seniority=3,
+    )
+
+    summary = cog._format_summary(draft)
+    assert "Falcons" in summary
+    assert "@role" in summary
+    assert "Cat" in summary
+    assert "#chan" in summary
+    assert "@cap" in summary
+    assert "StarterA" in summary
+    assert "SubB" in summary
+    assert "2025" in summary
+    assert "Fall" in summary
+    assert "3" in summary
+
+
+def test_format_summary_empty_draft(cog):
+    draft = TeamCreationData()
+    summary = cog._format_summary(draft)
+    assert "N/A" in summary
+    assert "Not set" in summary
+    assert "None" in summary
+
+
+ # _ensure_captain_assignment
+ 
+
+@pytest.mark.asyncio
+async def test_ensure_captain_already_starter(cog):
+    interaction = make_interaction()
+    captain = MagicMock(spec=discord.Member)
+    captain.id = 10
+    captain.display_name = "Cap"
+
+    starter = MagicMock(spec=discord.Member)
+    starter.id = 10
+
+    draft = TeamCreationData(captain=captain, starters=[starter], substitutes=[])
+    await cog._ensure_captain_assignment(interaction, draft)
+
+    interaction.followup.send.assert_not_awaited()
+    assert len(draft.starters) == 1
+
+
+@pytest.mark.asyncio
+async def test_ensure_captain_already_substitute(cog):
+    interaction = make_interaction()
+    captain = MagicMock(spec=discord.Member)
+    captain.id = 10
+    captain.display_name = "Cap"
+
+    sub = MagicMock(spec=discord.Member)
+    sub.id = 10
+
+    draft = TeamCreationData(captain=captain, starters=[], substitutes=[sub])
+    await cog._ensure_captain_assignment(interaction, draft)
+
+    interaction.followup.send.assert_not_awaited()
+    assert len(draft.starters) == 0
+
+
+@pytest.mark.asyncio
+async def test_ensure_captain_added_to_starters(cog):
+    interaction = make_interaction()
+    captain = MagicMock(spec=discord.Member)
+    captain.id = 10
+    captain.display_name = "Cap"
+
+    draft = TeamCreationData(captain=captain, starters=[], substitutes=[])
+    await cog._ensure_captain_assignment(interaction, draft)
+
+    interaction.followup.send.assert_awaited_once()
+    assert captain in draft.starters
+
+
+@pytest.mark.asyncio
+async def test_ensure_captain_none_captain(cog):
+    interaction = make_interaction()
+    draft = TeamCreationData(captain=None, starters=[], substitutes=[])
+    await cog._ensure_captain_assignment(interaction, draft)
+    interaction.followup.send.assert_not_awaited()
+
+
+ 
+# _wait_for_reply
+ 
+
+@pytest.mark.asyncio
+async def test_wait_for_reply_returns_message(cog, bot):
+    interaction = make_interaction()
+    msg = make_message("hello")
+    bot.wait_for = AsyncMock(return_value=msg)
+
+    result = await cog._wait_for_reply(interaction)
+    assert result is msg
+
+
+@pytest.mark.asyncio
+async def test_wait_for_reply_timeout_raises_cancelled(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(side_effect=asyncio.TimeoutError)
+
+    with pytest.raises(ConversationCancelled):
+        await cog._wait_for_reply(interaction)
+
+#_confirm
+
+@pytest.mark.asyncio
+async def test_confirm_yes(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(return_value=make_message("yes"))
+
+    result = await cog._confirm(interaction, "Do you confirm?")
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_confirm_no(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(return_value=make_message("no"))
+
+    result = await cog._confirm(interaction, "Do you confirm?")
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_confirm_exit_raises_cancelled(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(return_value=make_message("exit"))
+
+    with pytest.raises(ConversationCancelled):
+        await cog._confirm(interaction, "Do you confirm?")
+
+
+@pytest.mark.asyncio
+async def test_confirm_invalid_then_yes(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(side_effect=[
+        make_message("maybe"),
+        make_message("y"),
+    ])
+
+    result = await cog._confirm(interaction, "Do you confirm?")
+    assert result is True
+    assert interaction.followup.send.await_count >= 2
+
+
+ 
+# _ask_question
+ 
+
+@pytest.mark.asyncio
+async def test_ask_question_no_parser_returns_content(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(return_value=make_message("my answer"))
+
+    result = await cog._ask_question(interaction, "What?")
+    assert result == "my answer"
+
+
+@pytest.mark.asyncio
+async def test_ask_question_exit_raises_cancelled(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(return_value=make_message("exit"))
+
+    with pytest.raises(ConversationCancelled):
+        await cog._ask_question(interaction, "What?")
+
+
+@pytest.mark.asyncio
+async def test_ask_question_allow_na_returns_none(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(return_value=make_message("N/A"))
+
+    result = await cog._ask_question(interaction, "What?", allow_na=True)
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_ask_question_parser_called(cog, bot):
+    interaction = make_interaction()
+    msg = make_message("42")
+    bot.wait_for = AsyncMock(return_value=msg)
+
+    parser = AsyncMock(return_value=42)
+    result = await cog._ask_question(interaction, "What?", parser=parser)
+    assert result == 42
+    parser.assert_awaited_once_with("42", msg)
+
+
+@pytest.mark.asyncio
+async def test_ask_question_parser_validation_error_retries(cog, bot):
+    interaction = make_interaction()
+    bad_msg = make_message("bad")
+    good_msg = make_message("good")
+    bot.wait_for = AsyncMock(side_effect=[bad_msg, good_msg])
+
+    async def parser(content, message):
+        if content == "bad":
+            raise ValidationError("Bad input")
+        return "ok"
+
+    result = await cog._ask_question(interaction, "What?", parser=parser)
+    assert result == "ok"
+    # Error message should have been sent for the bad input
+    interaction.followup.send.assert_awaited()
+
+# _prompt_team_nick
+ 
+
+@pytest.mark.asyncio
+async def test_prompt_team_nick_returns_value(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(return_value=make_message("Falcons"))
+
+    result = await cog._prompt_team_nick(interaction)
+    assert result == "Falcons"
+
+
+@pytest.mark.asyncio
+async def test_prompt_team_nick_na_returns_none(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(return_value=make_message("N/A"))
+
+    result = await cog._prompt_team_nick(interaction)
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_prompt_team_nick_strips_whitespace(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(return_value=make_message("  Eagles  "))
+
+    result = await cog._prompt_team_nick(interaction)
+    assert result == "Eagles"
+
+
+ 
+# _prompt_year
+ 
+
+@pytest.mark.asyncio
+async def test_prompt_year_valid(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(return_value=make_message("2025"))
+
+    result = await cog._prompt_year(interaction)
+    assert result == 2025
+
+
+@pytest.mark.asyncio
+async def test_prompt_year_non_numeric_retries(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(side_effect=[
+        make_message("twenty-twenty-five"),
+        make_message("2025"),
+    ])
+
+    result = await cog._prompt_year(interaction)
+    assert result == 2025
+
+
+@pytest.mark.asyncio
+async def test_prompt_year_out_of_range_retries(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(side_effect=[
+        make_message("1999"),
+        make_message("2025"),
+    ])
+
+    result = await cog._prompt_year(interaction)
+    assert result == 2025
+
+
+@pytest.mark.asyncio
+async def test_prompt_year_exit_raises_cancelled(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(return_value=make_message("exit"))
+
+    with pytest.raises(ConversationCancelled):
+        await cog._prompt_year(interaction)
+
+
+ 
+# _prompt_seniority
+ 
+
+@pytest.mark.asyncio
+async def test_prompt_seniority_valid(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(return_value=make_message("3"))
+
+    result = await cog._prompt_seniority(interaction)
+    assert result == 3
+
+
+@pytest.mark.asyncio
+async def test_prompt_seniority_non_numeric_retries(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(side_effect=[
+        make_message("high"),
+        make_message("1"),
+    ])
+
+    result = await cog._prompt_seniority(interaction)
+    assert result == 1
+
+
+@pytest.mark.asyncio
+async def test_prompt_seniority_exit_raises_cancelled(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(return_value=make_message("exit"))
+
+    with pytest.raises(ConversationCancelled):
+        await cog._prompt_seniority(interaction)
+
+
+# _prompt_role
+
+
+@pytest.mark.asyncio
+async def test_prompt_role_mention_confirm_yes(cog, bot):
+    interaction = make_interaction()
+    role = MagicMock(spec=discord.Role)
+    role.mention = "@TestRole"
+    msg = make_message("@TestRole", role_mentions=[role])
+    # first wait_for: role mention; second wait_for: "yes" confirm
+    bot.wait_for = AsyncMock(side_effect=[msg, make_message("yes")])
+
+    result = await cog._prompt_role(interaction)
+    assert result is role
+
+
+@pytest.mark.asyncio
+async def test_prompt_role_mention_confirm_no_retries(cog, bot):
+    interaction = make_interaction()
+    role1 = MagicMock(spec=discord.Role)
+    role1.mention = "@Role1"
+    role2 = MagicMock(spec=discord.Role)
+    role2.mention = "@Role2"
+    msg_mention1 = make_message("@Role1", role_mentions=[role1])
+    msg_mention2 = make_message("@Role2", role_mentions=[role2])
+    # decline role1, accept role2
+    bot.wait_for = AsyncMock(side_effect=[msg_mention1, make_message("no"), msg_mention2, make_message("yes")])
+
+    result = await cog._prompt_role(interaction)
+    assert result is role2
+
+
+@pytest.mark.asyncio
+async def test_prompt_role_existing_by_name(cog, bot):
+    interaction = make_interaction()
+    role = MagicMock(spec=discord.Role)
+    role.name = "TeamRole"
+    role.mention = "@TeamRole"
+    interaction.guild.roles = [role]
+    bot.wait_for = AsyncMock(side_effect=[make_message("TeamRole"), make_message("yes")])
+
+    result = await cog._prompt_role(interaction)
+    assert result is role
+
+
+@pytest.mark.asyncio
+async def test_prompt_role_create_new(cog, bot):
+    interaction = make_interaction()
+    interaction.guild.roles = []
+    new_role = MagicMock(spec=discord.Role)
+    interaction.guild.create_role = AsyncMock(return_value=new_role)
+    bot.wait_for = AsyncMock(side_effect=[make_message("NewRole"), make_message("yes")])
+
+    result = await cog._prompt_role(interaction)
+    assert result is new_role
+    interaction.guild.create_role.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_prompt_role_decline_create_retries(cog, bot):
+    interaction = make_interaction()
+    interaction.guild.roles = []
+    new_role = MagicMock(spec=discord.Role)
+    interaction.guild.create_role = AsyncMock(return_value=new_role)
+    # decline creation, then provide a role mention
+    role = MagicMock(spec=discord.Role)
+    role.mention = "@FallbackRole"
+    msg_with_role = make_message("@FallbackRole", role_mentions=[role])
+    bot.wait_for = AsyncMock(side_effect=[
+        make_message("NewRole"), make_message("no"),   # decline create
+        msg_with_role, make_message("yes"),             # accept role mention
+    ])
+
+    result = await cog._prompt_role(interaction)
+    assert result is role
+
+
+@pytest.mark.asyncio
+async def test_prompt_role_exit_raises_cancelled(cog, bot):
+    interaction = make_interaction()
+    interaction.guild.roles = []
+    bot.wait_for = AsyncMock(return_value=make_message("exit"))
+
+    with pytest.raises(ConversationCancelled):
+        await cog._prompt_role(interaction)
+
+
+# _prompt_category
+
+
+@pytest.mark.asyncio
+async def test_prompt_category_existing_by_name(cog, bot):
+    interaction = make_interaction()
+    category = MagicMock(spec=discord.CategoryChannel)
+    category.name = "Teams"
+    interaction.guild.categories = [category]
+    bot.wait_for = AsyncMock(side_effect=[make_message("Teams"), make_message("yes")])
+
+    result = await cog._prompt_category(interaction)
+    assert result is category
+
+
+@pytest.mark.asyncio
+async def test_prompt_category_existing_by_id(cog, bot):
+    interaction = make_interaction()
+    category = MagicMock(spec=discord.CategoryChannel)
+    category.id = 42
+    category.name = "Teams"
+    interaction.guild.categories = [category]
+    bot.wait_for = AsyncMock(side_effect=[make_message("42"), make_message("yes")])
+
+    result = await cog._prompt_category(interaction)
+    assert result is category
+
+
+@pytest.mark.asyncio
+async def test_prompt_category_create_new(cog, bot):
+    interaction = make_interaction()
+    interaction.guild.categories = []
+    new_cat = MagicMock(spec=discord.CategoryChannel)
+    interaction.guild.create_category = AsyncMock(return_value=new_cat)
+    bot.wait_for = AsyncMock(side_effect=[make_message("NewCat"), make_message("yes")])
+
+    result = await cog._prompt_category(interaction)
+    assert result is new_cat
+    interaction.guild.create_category.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_prompt_category_decline_create_retries(cog, bot):
+    interaction = make_interaction()
+    interaction.guild.categories = []
+    new_cat = MagicMock(spec=discord.CategoryChannel)
+    interaction.guild.create_category = AsyncMock(return_value=new_cat)
+    bot.wait_for = AsyncMock(side_effect=[
+        make_message("NewCat"), make_message("no"),    # decline
+        make_message("NewCat"), make_message("yes"),   # accept on retry
+    ])
+
+    result = await cog._prompt_category(interaction)
+    assert result is new_cat
+
+
+@pytest.mark.asyncio
+async def test_prompt_category_exit_raises_cancelled(cog, bot):
+    interaction = make_interaction()
+    interaction.guild.categories = []
+    bot.wait_for = AsyncMock(return_value=make_message("exit"))
+
+    with pytest.raises(ConversationCancelled):
+        await cog._prompt_category(interaction)
+
+
+# _prompt_channel
+
+
+@pytest.mark.asyncio
+async def test_prompt_channel_mention_confirm_yes(cog, bot):
+    interaction = make_interaction()
+    category = MagicMock(spec=discord.CategoryChannel)
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.mention = "#team"
+    msg = make_message("#team", channel_mentions=[channel])
+    bot.wait_for = AsyncMock(side_effect=[msg, make_message("yes")])
+
+    result = await cog._prompt_channel(interaction, category)
+    assert result is channel
+
+
+@pytest.mark.asyncio
+async def test_prompt_channel_by_name(cog, bot):
+    interaction = make_interaction()
+    category = MagicMock(spec=discord.CategoryChannel)
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.name = "team-chat"
+    channel.mention = "#team-chat"
+    interaction.guild.text_channels = [channel]
+    bot.wait_for = AsyncMock(side_effect=[make_message("team-chat"), make_message("yes")])
+
+    result = await cog._prompt_channel(interaction, category)
+    assert result is channel
+
+
+@pytest.mark.asyncio
+async def test_prompt_channel_create_new(cog, bot):
+    interaction = make_interaction()
+    category = MagicMock(spec=discord.CategoryChannel)
+    interaction.guild.text_channels = []
+    new_channel = MagicMock(spec=discord.TextChannel)
+    interaction.guild.create_text_channel = AsyncMock(return_value=new_channel)
+    bot.wait_for = AsyncMock(side_effect=[make_message("new-channel"), make_message("yes")])
+
+    result = await cog._prompt_channel(interaction, category)
+    assert result is new_channel
+    interaction.guild.create_text_channel.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_prompt_channel_non_text_mention_retries(cog, bot):
+    interaction = make_interaction()
+    category = MagicMock(spec=discord.CategoryChannel)
+    voice_channel = MagicMock(spec=discord.VoiceChannel)  # not a TextChannel
+    msg_voice = make_message("#voice", channel_mentions=[voice_channel])
+    new_channel = MagicMock(spec=discord.TextChannel)
+    interaction.guild.text_channels = []
+    interaction.guild.create_text_channel = AsyncMock(return_value=new_channel)
+    bot.wait_for = AsyncMock(side_effect=[
+        msg_voice,                           # voice channel mention → rejected
+        make_message("new-channel"), make_message("yes"),  # create new
+    ])
+
+    result = await cog._prompt_channel(interaction, category)
+    assert result is new_channel
+
+
+@pytest.mark.asyncio
+async def test_prompt_channel_exit_raises_cancelled(cog, bot):
+    interaction = make_interaction()
+    category = MagicMock(spec=discord.CategoryChannel)
+    interaction.guild.text_channels = []
+    bot.wait_for = AsyncMock(return_value=make_message("exit"))
+
+    with pytest.raises(ConversationCancelled):
+        await cog._prompt_channel(interaction, category)
+
+
+# _prompt_member
+
+
+@pytest.mark.asyncio
+async def test_prompt_member_by_mention(cog, bot):
+    interaction = make_interaction()
+    member = MagicMock(spec=discord.Member)
+    member.mention = "@User"
+    msg = make_message("@User", mentions=[member])
+    bot.wait_for = AsyncMock(side_effect=[msg, make_message("yes")])
+
+    result = await cog._prompt_member(interaction, "captain")
+    assert result is member
+
+
+@pytest.mark.asyncio
+async def test_prompt_member_by_id(cog, bot):
+    interaction = make_interaction()
+    member = MagicMock(spec=discord.Member)
+    member.id = 12345
+    member.mention = "@User"
+    interaction.guild.get_member = MagicMock(return_value=member)
+    bot.wait_for = AsyncMock(side_effect=[make_message("12345"), make_message("yes")])
+
+    result = await cog._prompt_member(interaction, "captain")
+    assert result is member
+
+
+@pytest.mark.asyncio
+async def test_prompt_member_by_id_not_in_cache_fetches(cog, bot):
+    interaction = make_interaction()
+    member = MagicMock(spec=discord.Member)
+    member.id = 12345
+    member.mention = "@User"
+    interaction.guild.get_member = MagicMock(return_value=None)
+    interaction.guild.fetch_member = AsyncMock(return_value=member)
+    bot.wait_for = AsyncMock(side_effect=[make_message("12345"), make_message("yes")])
+
+    result = await cog._prompt_member(interaction, "captain")
+    assert result is member
+
+
+@pytest.mark.asyncio
+async def test_prompt_member_not_found_retries(cog, bot):
+    interaction = make_interaction()
+    interaction.guild.get_member = MagicMock(return_value=None)
+    interaction.guild.fetch_member = AsyncMock(side_effect=discord.NotFound(MagicMock(), "not found"))
+    member = MagicMock(spec=discord.Member)
+    member.mention = "@User"
+    msg_valid = make_message("@User", mentions=[member])
+    bot.wait_for = AsyncMock(side_effect=[make_message("99999"), msg_valid, make_message("yes")])
+
+    result = await cog._prompt_member(interaction, "captain")
+    assert result is member
+
+
+@pytest.mark.asyncio
+async def test_prompt_member_confirm_no_retries(cog, bot):
+    interaction = make_interaction()
+    member1 = MagicMock(spec=discord.Member)
+    member1.mention = "@User1"
+    member2 = MagicMock(spec=discord.Member)
+    member2.mention = "@User2"
+    msg1 = make_message("@User1", mentions=[member1])
+    msg2 = make_message("@User2", mentions=[member2])
+    bot.wait_for = AsyncMock(side_effect=[msg1, make_message("no"), msg2, make_message("yes")])
+
+    result = await cog._prompt_member(interaction, "captain")
+    assert result is member2
+
+
+@pytest.mark.asyncio
+async def test_prompt_member_exit_raises_cancelled(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(return_value=make_message("exit"))
+
+    with pytest.raises(ConversationCancelled):
+        await cog._prompt_member(interaction, "captain")
+
+
+# _prompt_member_group
+
+
+@pytest.mark.asyncio
+async def test_prompt_member_group_by_mentions(cog, bot):
+    interaction = make_interaction()
+    m1 = MagicMock(spec=discord.Member)
+    m1.id = 1
+    m1.display_name = "Alice"
+    m2 = MagicMock(spec=discord.Member)
+    m2.id = 2
+    m2.display_name = "Bob"
+    msg = make_message("@Alice @Bob", mentions=[m1, m2])
+    bot.wait_for = AsyncMock(side_effect=[msg, make_message("yes")])
+
+    result = await cog._prompt_member_group(interaction, "starter", require_entry=True)
+    assert len(result) == 2
+    assert m1 in result and m2 in result
+
+
+@pytest.mark.asyncio
+async def test_prompt_member_group_na_returns_empty(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(return_value=make_message("N/A"))
+
+    result = await cog._prompt_member_group(interaction, "substitute", require_entry=False)
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_prompt_member_group_no_valid_members_retries(cog, bot):
+    interaction = make_interaction()
+    interaction.guild.get_member = MagicMock(return_value=None)
+    interaction.guild.fetch_member = AsyncMock(side_effect=discord.NotFound(MagicMock(), "nf"))
+    m = MagicMock(spec=discord.Member)
+    m.id = 5
+    m.display_name = "Carol"
+    msg_valid = make_message("@Carol", mentions=[m])
+    bot.wait_for = AsyncMock(side_effect=[
+        make_message("99999"),         # no valid member → ValidationError → retry
+        msg_valid, make_message("yes"),
+    ])
+
+    result = await cog._prompt_member_group(interaction, "starter", require_entry=True)
+    assert m in result
+
+
+@pytest.mark.asyncio
+async def test_prompt_member_group_confirm_no_retries(cog, bot):
+    interaction = make_interaction()
+    m = MagicMock(spec=discord.Member)
+    m.id = 1
+    m.display_name = "Alice"
+    msg = make_message("@Alice", mentions=[m])
+    bot.wait_for = AsyncMock(side_effect=[msg, make_message("no"), msg, make_message("yes")])
+
+    result = await cog._prompt_member_group(interaction, "starter", require_entry=True)
+    assert m in result
+
+
+@pytest.mark.asyncio
+async def test_prompt_member_group_exit_raises_cancelled(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(return_value=make_message("exit"))
+
+    with pytest.raises(ConversationCancelled):
+        await cog._prompt_member_group(interaction, "starter", require_entry=True)
+
+
+# _prompt_semester
+
+
+@pytest.mark.asyncio
+async def test_prompt_semester_returns_value(cog, bot):
+    interaction = make_interaction()
+
+    message_mock = MagicMock()
+    message_mock.edit = AsyncMock()
+
+    async def fake_followup_send(*args, **kwargs):
+        view = kwargs.get("view")
+        if view is not None:
+            view.value = "Fall"
+            view.stop()
+        return message_mock
+
+    interaction.followup.send = AsyncMock(side_effect=fake_followup_send)
+
+    with patch.object(cog, "_wait_for_exit_signal", new=AsyncMock(return_value=False)):
+        result = await cog._prompt_semester(interaction)
+
+    assert result == "Fall"
+
+
+@pytest.mark.asyncio
+async def test_prompt_semester_exit_raises_cancelled(cog, bot):
+    interaction = make_interaction()
+    message_mock = MagicMock()
+    message_mock.edit = AsyncMock()
+
+    async def fake_send(*args, **kwargs):
+        return message_mock
+    interaction.followup.send = AsyncMock(side_effect=fake_send)
+
+    with patch.object(cog, "_wait_for_exit_signal", new=AsyncMock(return_value=True)):
+        with pytest.raises(ConversationCancelled):
+            await cog._prompt_semester(interaction)
+
+
+@pytest.mark.asyncio
+async def test_prompt_semester_timeout_raises_cancelled(cog, bot):
+    interaction = make_interaction()
+    message_mock = MagicMock()
+    message_mock.edit = AsyncMock()
+
+    async def fake_send(*args, **kwargs):
+        return message_mock
+    interaction.followup.send = AsyncMock(side_effect=fake_send)
+
+    # exit signal never fires (returns False), view never gets a value → timeout
+    with patch.object(cog, "_wait_for_exit_signal", new=AsyncMock(return_value=False)):
+        with pytest.raises(ConversationCancelled):
+            await cog._prompt_semester(interaction)
+
+
+# _review_answers
+
+
+@pytest.mark.asyncio
+async def test_review_answers_confirm_returns(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(return_value=make_message("confirm"))
+
+    role = MagicMock(spec=discord.Role)
+    role.mention = "@R"
+    category = MagicMock(spec=discord.CategoryChannel)
+    category.name = "C"
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.mention = "#ch"
+    captain = MagicMock(spec=discord.Member)
+    captain.mention = "@cap"
+    draft = TeamCreationData(
+        role=role, category=category, channel=channel, captain=captain,
+        year=2025, semester="Fall", seniority=1,
+    )
+    await cog._review_answers(interaction, draft)  # should return without error
+
+
+@pytest.mark.asyncio
+async def test_review_answers_exit_raises_cancelled(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(return_value=make_message("exit"))
+
+    draft = TeamCreationData()
+    with pytest.raises(ConversationCancelled):
+        await cog._review_answers(interaction, draft)
+
+
+@pytest.mark.asyncio
+async def test_review_answers_unknown_field_sends_error_then_confirm(cog, bot):
+    interaction = make_interaction()
+    bot.wait_for = AsyncMock(side_effect=[
+        make_message("invalidfield"),
+        make_message("confirm"),
+    ])
+
+    role = MagicMock(spec=discord.Role)
+    role.mention = "@R"
+    category = MagicMock(spec=discord.CategoryChannel)
+    category.name = "C"
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.mention = "#ch"
+    captain = MagicMock(spec=discord.Member)
+    captain.mention = "@cap"
+    draft = TeamCreationData(
+        role=role, category=category, channel=channel, captain=captain,
+        year=2025, semester="Fall", seniority=1,
+    )
+    await cog._review_answers(interaction, draft)
+    # Unknown field error + summary = at least 3 sends (initial summary, error, second summary)
+    assert interaction.followup.send.await_count >= 3
+
+
+@pytest.mark.asyncio
+async def test_review_answers_edit_year_updates_draft(cog, bot):
+    interaction = make_interaction()
+    # First loop: type "year" to edit it; year prompt returns 2026; second loop: confirm
+    bot.wait_for = AsyncMock(side_effect=[
+        make_message("year"),       # choose to edit year field
+        make_message("2026"),       # new year value
+        make_message("confirm"),    # confirm the draft
+    ])
+
+    role = MagicMock(spec=discord.Role)
+    role.mention = "@R"
+    category = MagicMock(spec=discord.CategoryChannel)
+    category.name = "C"
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.mention = "#ch"
+    captain = MagicMock(spec=discord.Member)
+    captain.mention = "@cap"
+    draft = TeamCreationData(
+        role=role, category=category, channel=channel, captain=captain,
+        year=2025, semester="Fall", seniority=1,
+    )
+    await cog._review_answers(interaction, draft)
+    assert draft.year == 2026
+
+
+# _finalize_team
+
+
+@pytest.mark.asyncio
+async def test_finalize_team_happy_path(cog):
+    from Teams.create_team import TeamCreationError
+
+    interaction = make_interaction()
+    role = MagicMock(spec=discord.Role)
+    role.id = 1
+    category = MagicMock(spec=discord.CategoryChannel)
+    category.id = 2
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.id = 3
+    captain = MagicMock(spec=discord.Member)
+    captain.id = 10
+    captain.display_name = "Cap"
+    captain.add_roles = AsyncMock()
+
+    draft = TeamCreationData(
+        role=role, category=category, channel=channel, captain=captain,
+        starters=[], substitutes=[], year=2025, semester="Fall", seniority=1,
+    )
+
+    mock_conn = AsyncMock()
+    mock_conn.fetch = AsyncMock(side_effect=[[], [{"team_id": 42}]])
+    mock_conn.execute = AsyncMock()
+
+    async def fake_transaction(fn):
+        await fn(mock_conn)
+
+    with patch("Teams.create_team.db") as mock_db:
+        mock_db.run_in_transaction = AsyncMock(side_effect=fake_transaction)
+        warnings = await cog._finalize_team(interaction, draft)
+
+    assert warnings == []
+    captain.add_roles.assert_awaited_once_with(role, reason="Team creation assignment")
+
+
+@pytest.mark.asyncio
+async def test_finalize_team_conflict_raises_error(cog):
+    from Teams.create_team import TeamCreationError
+
+    interaction = make_interaction()
+    role = MagicMock(spec=discord.Role)
+    role.id = 1
+    category = MagicMock(spec=discord.CategoryChannel)
+    category.id = 2
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.id = 3
+    captain = MagicMock(spec=discord.Member)
+    captain.id = 10
+
+    draft = TeamCreationData(
+        role=role, category=category, channel=channel, captain=captain,
+        starters=[], substitutes=[], year=2025, semester="Fall", seniority=1,
+    )
+
+    mock_conn = AsyncMock()
+    mock_conn.fetch = AsyncMock(return_value=[{"team_id": 99}])  # conflict exists
+
+    async def fake_transaction(fn):
+        await fn(mock_conn)
+
+    with patch("Teams.create_team.db") as mock_db:
+        mock_db.run_in_transaction = AsyncMock(side_effect=fake_transaction)
+        with pytest.raises(TeamCreationError):
+            await cog._finalize_team(interaction, draft)
+
+
+@pytest.mark.asyncio
+async def test_finalize_team_role_forbidden_produces_warning(cog):
+    interaction = make_interaction()
+    role = MagicMock(spec=discord.Role)
+    role.id = 1
+    category = MagicMock(spec=discord.CategoryChannel)
+    category.id = 2
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.id = 3
+    captain = MagicMock(spec=discord.Member)
+    captain.id = 10
+    captain.display_name = "Cap"
+    captain.add_roles = AsyncMock(side_effect=discord.Forbidden(MagicMock(), "forbidden"))
+
+    draft = TeamCreationData(
+        role=role, category=category, channel=channel, captain=captain,
+        starters=[], substitutes=[], year=2025, semester="Fall", seniority=1,
+    )
+
+    mock_conn = AsyncMock()
+    mock_conn.fetch = AsyncMock(side_effect=[[], [{"team_id": 42}]])
+    mock_conn.execute = AsyncMock()
+
+    async def fake_transaction(fn):
+        await fn(mock_conn)
+
+    with patch("Teams.create_team.db") as mock_db:
+        mock_db.run_in_transaction = AsyncMock(side_effect=fake_transaction)
+        warnings = await cog._finalize_team(interaction, draft)
+
+    assert len(warnings) == 1
+    assert "Cap" in warnings[0]
+    
+    
+# create_team command – integration
+
+
+def make_admin_interaction():
+    """Make an interaction that passes the admin guard in create_team."""
+    interaction = make_interaction()
+    # interaction.user must be a discord.Member instance for isinstance check
+    user = MagicMock(spec=discord.Member)
+    user.id = 1
+    interaction.user = user
+    # cog.bot.get_cog must return an Admin-spec mock
+    admin_mock = MagicMock(spec=Admin)
+    admin_mock.is_admin = AsyncMock(return_value=True)
+    return interaction, admin_mock
+
+
+@pytest.mark.asyncio
+async def test_create_team_happy_path(cog):
+    interaction, admin_mock = make_admin_interaction()
+    cog.bot.get_cog = MagicMock(return_value=admin_mock)
+
+    role = MagicMock(spec=discord.Role)
+    role.mention = "@R"
+    category = MagicMock(spec=discord.CategoryChannel)
+    category.name = "C"
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.mention = "#ch"
+    captain = MagicMock(spec=discord.Member)
+    captain.mention = "@cap"
+    draft = TeamCreationData(
+        team_nick="Falcons", role=role, category=category, channel=channel,
+        captain=captain, starters=[], substitutes=[], year=2025, semester="Fall", seniority=1,
+    )
+
+    with patch.object(cog, "_collect_team_data", new=AsyncMock(return_value=draft)), \
+         patch.object(cog, "_finalize_team", new=AsyncMock(return_value=[])):
+        await cog.create_team.callback(cog, interaction)
+
+    interaction.response.defer.assert_awaited_once()
+    # Final summary should be sent
+    assert interaction.followup.send.await_count >= 2
+
+
+@pytest.mark.asyncio
+async def test_create_team_conversation_cancelled(cog):
+    interaction, admin_mock = make_admin_interaction()
+    cog.bot.get_cog = MagicMock(return_value=admin_mock)
+
+    with patch.object(cog, "_collect_team_data", new=AsyncMock(side_effect=ConversationCancelled("cancelled"))):
+        await cog.create_team.callback(cog, interaction)
+
+    sent_messages = [call.args[0] for call in interaction.followup.send.call_args_list if call.args]
+    assert any("cancelled" in m.lower() for m in sent_messages)
+
+
+@pytest.mark.asyncio
+async def test_create_team_unexpected_error_during_collect(cog):
+    interaction, admin_mock = make_admin_interaction()
+    cog.bot.get_cog = MagicMock(return_value=admin_mock)
+
+    with patch.object(cog, "_collect_team_data", new=AsyncMock(side_effect=RuntimeError("boom"))):
+        await cog.create_team.callback(cog, interaction)
+
+    sent_messages = [call.args[0] for call in interaction.followup.send.call_args_list if call.args]
+    assert any("unexpected" in m.lower() or "boom" in m.lower() for m in sent_messages)
+
+
+@pytest.mark.asyncio
+async def test_create_team_finalize_error(cog):
+    from Teams.create_team import TeamCreationError
+    interaction, admin_mock = make_admin_interaction()
+    cog.bot.get_cog = MagicMock(return_value=admin_mock)
+
+    role = MagicMock(spec=discord.Role)
+    role.mention = "@R"
+    category = MagicMock(spec=discord.CategoryChannel)
+    category.name = "C"
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.mention = "#ch"
+    captain = MagicMock(spec=discord.Member)
+    captain.mention = "@cap"
+    draft = TeamCreationData(
+        role=role, category=category, channel=channel, captain=captain,
+        year=2025, semester="Fall", seniority=1,
+    )
+
+    with patch.object(cog, "_collect_team_data", new=AsyncMock(return_value=draft)), \
+         patch.object(cog, "_finalize_team", new=AsyncMock(side_effect=TeamCreationError("conflict"))):
+        await cog.create_team.callback(cog, interaction)
+
+    sent_messages = [call.args[0] for call in interaction.followup.send.call_args_list if call.args]
+    assert any("conflict" in m.lower() or "blocked" in m.lower() for m in sent_messages)
+
+
+@pytest.mark.asyncio
+async def test_create_team_with_warnings(cog):
+    interaction, admin_mock = make_admin_interaction()
+    cog.bot.get_cog = MagicMock(return_value=admin_mock)
+
+    role = MagicMock(spec=discord.Role)
+    role.mention = "@R"
+    category = MagicMock(spec=discord.CategoryChannel)
+    category.name = "C"
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.mention = "#ch"
+    captain = MagicMock(spec=discord.Member)
+    captain.mention = "@cap"
+    draft = TeamCreationData(
+        role=role, category=category, channel=channel, captain=captain,
+        year=2025, semester="Fall", seniority=1,
+    )
+
+    with patch.object(cog, "_collect_team_data", new=AsyncMock(return_value=draft)), \
+         patch.object(cog, "_finalize_team", new=AsyncMock(return_value=["Missing permission for Alice."])):
+        await cog.create_team.callback(cog, interaction)
+
+    sent_messages = [call.args[0] for call in interaction.followup.send.call_args_list if call.args]
+    assert any("Warnings" in m or "Missing permission" in m for m in sent_messages)
