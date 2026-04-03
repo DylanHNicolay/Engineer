@@ -1,5 +1,6 @@
 import discord
 from utils.db import db
+from utils.verification import post_verification_message
 
 async def _init_guild_db(guild: discord.Guild):
     """Initializes the guild in the database."""
@@ -77,6 +78,12 @@ async def _update_engineer_channel_perms(engineer_channel: discord.TextChannel, 
     await engineer_channel.edit(overwrites=overwrites)
     await engineer_channel.send("Channel permissions have been updated for leadership roles.")
 
+async def _create_verify_channel(guild: discord.Guild, engineer_channel: discord.TextChannel):
+    #Creates the public verify channel.
+    verify_channel = await guild.create_text_channel('verify')
+    await db.execute("UPDATE server_settings SET verify_channel_id = $1 WHERE guild_id = $2", verify_channel.id, guild.id)
+    await engineer_channel.send("Created #verify channel.")
+
 async def setup_guild(guild: discord.Guild):
     """
     Sets up the server when the bot joins by calling modular setup functions.
@@ -87,5 +94,11 @@ async def setup_guild(guild: discord.Guild):
     
     role_objects = await _setup_roles(guild, engineer_channel)
     await _update_engineer_channel_perms(engineer_channel, role_objects)
+    
+    await _create_verify_channel(guild, engineer_channel)
+    await engineer_channel.send("Initial role and channel setup is complete. Run the `/backfill` command to populate the database with existing members. Please ensure that the bot is above the roles you want to backfill.")
+
+    await post_verification_message(guild)
+    await engineer_channel.send("Posted initial verification message.")
     
     await engineer_channel.send("Server setup complete.")
