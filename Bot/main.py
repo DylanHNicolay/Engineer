@@ -24,9 +24,12 @@ class MyClient(commands.Bot):
         await self.load_extension("Teams.archive_team")
         await self.load_extension("Teams.list_teams")
         await self.load_extension("Admin.admin")
+        await self.load_extension("Admin.set_captain")
         await self.load_extension("Dues.set-dues")
         await self.load_extension("Dues.generate")
         await self.load_extension("Webscrape.webscrape")
+        await self.load_extension("Rooms.rooms")
+        await self.load_extension("Rooms.reservations")
 
         # Then sync to the guild
         guild = discord.Object(id=1481037920499400704)
