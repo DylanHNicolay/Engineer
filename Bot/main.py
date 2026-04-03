@@ -48,9 +48,13 @@ class MyClient(commands.Bot):
         for guild in self.guilds:
             print(f'Connected to target guild: {guild.name} (ID: {guild.id})')
             settings_records = await db.execute("SELECT * FROM server_settings WHERE guild_id = $1", guild.id)
+            
+            settings = settings_records[0] 
+            engineer_channel = guild.get_channel(settings.get('engineer_channel_id'))
+            verify_channel = guild.get_channel(settings.get('verify_channel_id'))
 
             #Check if server settings exist for this guild, if not run setup
-            if not settings_records:
+            if (not settings_records) or (not engineer_channel) or (not verify_channel):
                 print ("Server settings not found. Setting up server.")
                 try:
                     await setup_guild(guild=guild)
