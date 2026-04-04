@@ -13,6 +13,13 @@ from getpass import getpass
 from . import dialogue
 
 
+# class dropdown(commands.Cog):
+
+#     @app_commands.command(name="dropdown", description="testing dropdowns")
+#     async def dropdown(self, interaction: discord.Interaction):
+#         view = dialogue.testSelectView()
+#         await interaction.followup.send("Click it!", view=view, ephemeral=True)
+
 
 class webscrape(commands.Cog):
 
@@ -28,10 +35,11 @@ class webscrape(commands.Cog):
 
         if view.value is not True:
             print("...Command canceled")
-            await interaction.followup.send(f"Canceling command.")
+            await interaction.followup.send(f"Canceling command.", ephemeral=True)
             return
 
         print("Webscrape")
+        await interaction.followup.send(f"Logging in...", ephemeral=True)
         # check that cms.union.rpi.edu is up
         try:
             requests.get('https://cms.union.rpi.edu/login/password/')
@@ -145,7 +153,8 @@ class webscrape(commands.Cog):
             await interaction.followup.send(f"While redirecting from DUO, threw error:\n ```Bad redirect to {driver.current_url}```", ephemeral=True)
             return
 
-        await asyncio.sleep(10)
+        view = dialogue.homeSelectView()
+        await interaction.followup.send(f"Welcome to a new session in the Club Management System! What would you like to do?", view=view, ephemeral=True)
 
         driver.quit()
         print("Driver ended")
@@ -153,3 +162,4 @@ class webscrape(commands.Cog):
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(webscrape(bot))
+    # await bot.add_cog(dropdown(bot))

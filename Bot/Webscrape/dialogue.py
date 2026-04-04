@@ -22,7 +22,7 @@ from selenium.webdriver.common.by import By
 
 
 
-# --------------------- Button Classes -------------------------------
+# --------------------- Button / Select Classes -------------------------------
 
 
 class ContinueButton(discord.ui.Button):
@@ -30,6 +30,7 @@ class ContinueButton(discord.ui.Button):
         super().__init__(label="Continue", style=discord.ButtonStyle.success)
 
     async def callback(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
         view = self.view
 
         if hasattr(view, "author") and interaction.user != view.author:
@@ -46,6 +47,7 @@ class CancelButton(discord.ui.Button):
         super().__init__(label="Cancel", style=discord.ButtonStyle.danger)
 
     async def callback(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
         view = self.view
 
         if hasattr(view, "author") and interaction.user != view.author:
@@ -56,7 +58,44 @@ class CancelButton(discord.ui.Button):
             await self.view.on_cancel(interaction)
             view.stop()
 
+class ExitButton(discord.ui.Button):
+    def __init__(self):
+        super().__init__(label="Exit", style=discord.ButtonStyle.danger)
 
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        view = self.view
+
+        if hasattr(view, "author") and interaction.user != view.author:
+            return
+
+        if hasattr(view, "on_cancel"):
+            await self.view.on_response(interaction)
+            await self.view.on_cancel(interaction)
+            view.stop()
+
+class homeSelectMenu(discord.ui.Select):
+    def __init__(self):
+        super().__init__(placeholder="Select An Option", 
+            options = [
+                discord.SelectOption(label="Add Users", value="add"),
+                discord.SelectOption(label="Remove Users", value="remove"),
+                discord.SelectOption(label="Get Users", value="get"),
+                discord.SelectOption(label="End Session", value="end")
+            ])
+
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        view = self.view
+        select = self.values[0]
+        if hasattr(view, "author") and interaction.user != view.author:
+            return
+
+        if hasattr(view, "value"):
+            view.value = select
+            await interaction.followup.send(select, ephemeral=True)
+
+        await self.view.on_response(interaction)
 
 # --------------------- View Classes ---------------------------------
 
@@ -72,7 +111,6 @@ class ConfirmView(discord.ui.View):
         self.add_item(CancelButton())
 
     async def on_response(self, interaction):
-        await interaction.response.defer(ephemeral=True)
         for btn in self.children:
             btn.disabled = True
         await interaction.followup.edit_message(interaction.message.id, view=self)
@@ -99,6 +137,19 @@ class CancelDriverView(discord.ui.View):
             self.driver.quit()
             self.driver = None
         self.value = False
-        await interaction.response.send_message("Driver shut down", ephemeral=True)
+        await interaction.followup.send("Driver shut down", ephemeral=True)
+        self.stop()
+
+class homeSelectView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=60)
+        self.value = None
+
+        self.add_item(homeSelectMenu())
+
+    async def on_response(self, interaction):
+        for obj in self.children:
+            obj.disabled = True
+        await interaction.edit_original_response(view=self)
         self.stop()
 
