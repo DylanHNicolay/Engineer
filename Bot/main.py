@@ -49,17 +49,34 @@ class MyClient(commands.Bot):
             print(f'Connected to target guild: {guild.name} (ID: {guild.id})')
             settings_records = await db.execute("SELECT * FROM server_settings WHERE guild_id = $1", guild.id)
             
-            settings = settings_records[0] 
-            engineer_channel = guild.get_channel(settings.get('engineer_channel_id'))
-            verify_channel = guild.get_channel(settings.get('verify_channel_id'))
-
-            #Check if server settings exist for this guild, if not run setup
-            if (not settings_records) or (not engineer_channel) or (not verify_channel):
+            # Check if server settings exist for this guild, if not run setup
+            if not settings_records:
                 print ("Server settings not found. Setting up server.")
                 try:
                     await setup_guild(guild=guild)
                 except Exception as e:
                     print(f"An error occurred during setup: {e}")
+                continue
+
+            # The server has a record in the database
+            settings = settings_records[0]
+            engineer_channel = guild.get_channel(settings.get('engineer_channel_id'))
+            verify_channel = guild.get_channel(settings.get('verify_channel_id'))
+
+            # Check if channels exist for this guild, if not run setup
+            if (not engineer_channel or not settings_records[0]['engineer_channel_id'] or
+                not verify_channel or not settings_records[0]['verify_channel_id']):
+
+                if not engineer_channel or not settings_records[0]['engineer_channel_id']:
+                    print("Engineer channel not found. Running setup.")
+                elif not verify_channel or not settings_records[0]['verify_channel_id']:
+                    print("Verify channel not found. Running setup.")       
+
+                try:
+                    await setup_guild(guild=guild)
+                except Exception as e:
+                    print(f"An error occurred during setup: {e}")
+                continue
             
         #Sync the commands for each guild 
         await self.tree.sync()     
