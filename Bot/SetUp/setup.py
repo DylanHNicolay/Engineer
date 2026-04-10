@@ -65,7 +65,6 @@ async def _setup_roles(guild: discord.Guild, log_channel: discord.TextChannel):
 
 async def _update_engineer_channel_perms(engineer_channel: discord.TextChannel, role_objects: dict):
     """Updates the engineer channel with permissions for leadership roles."""
-    guild = engineer_channel.guild
     co_president_role = role_objects.get('Co-President')
     representative_role = role_objects.get('Representative')
 
@@ -111,6 +110,22 @@ async def _create_verify_channel(guild: discord.Guild, engineer_channel: discord
         await engineer_channel.send("Created #verify channel.")
 
     await db.execute("UPDATE server_settings SET verify_channel_id = $1 WHERE guild_id = $2", verify_channel.id, guild.id)
+    return verify_channel
+
+async def _update_verify_channel_perms(verify_channel: discord.TextChannel, role_objects: dict):
+    """Updates the verify channel with permissions for leadership roles."""
+    co_president_role = role_objects.get('Co-President')
+    representative_role = role_objects.get('Representative')
+
+    overwrites = verify_channel.overwrites
+    
+    if co_president_role:
+        overwrites[co_president_role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
+    if representative_role:
+        overwrites[representative_role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
+    
+    await verify_channel.edit(overwrites=overwrites)
+    await verify_channel.send("Channel permissions have been updated for leadership roles.")
 
 async def setup_guild(guild: discord.Guild):
     """
@@ -123,7 +138,9 @@ async def setup_guild(guild: discord.Guild):
     role_objects = await _setup_roles(guild, engineer_channel)
     await _update_engineer_channel_perms(engineer_channel, role_objects)
     
-    await _create_verify_channel(guild, engineer_channel)
+    verify_channel = await _create_verify_channel(guild, engineer_channel)
+    await _update_verify_channel_perms(verify_channel, role_objects)
+
     await engineer_channel.send("Initial role and channel setup is complete. Run the `/backfill` command to populate the database with existing members. Please ensure that the bot is above the roles you want to backfill.")
 
     await post_verification_message(guild)
