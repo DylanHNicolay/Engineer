@@ -5,6 +5,7 @@ from discord import app_commands
 from discord.ext import commands
 from utils.db import db
 from SetUp.setup import setup_guild
+from utils.verification import refresh_verification_message
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 
@@ -78,6 +79,8 @@ class MyClient(commands.Bot):
                     print(f"An error occurred during setup: {e}")
                 continue
             
+            # Refresh the verification message for the guild
+            await refresh_verification_message(guild)
         #Sync the commands for each guild 
         await self.tree.sync()     
         print("Command tree synced for all guilds.")
