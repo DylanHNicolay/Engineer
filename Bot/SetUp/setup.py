@@ -12,6 +12,7 @@ async def _create_initial_engineer_channel(guild: discord.Guild):
     engineer_channel = None
     if settings_records and settings_records[0]['engineer_channel_id']:
         engineer_channel = guild.get_channel(settings_records[0]['engineer_channel_id'])
+        await engineer_channel.edit(name = 'engineer')
     
     if not engineer_channel:
         engineer_channel = discord.utils.get(guild.text_channels, name='engineer')
@@ -79,10 +80,37 @@ async def _update_engineer_channel_perms(engineer_channel: discord.TextChannel, 
     await engineer_channel.send("Channel permissions have been updated for leadership roles.")
 
 async def _create_verify_channel(guild: discord.Guild, engineer_channel: discord.TextChannel):
-    #Creates the public verify channel.
-    verify_channel = await guild.create_text_channel('verify')
+    """Creates or finds the verfiy channel."""
+    settings_records = await db.execute("SELECT verify_channel_id FROM server_settings WHERE guild_id = $1", guild.id)
+    verify_channel = None
+
+    # Check if verify channel exists, if not create it
+    if settings_records and settings_records[0]['verify_channel_id']:
+        verify_channel = guild.get_channel(settings_records[0]['verify_channel_id'])
+        await verify_channel.edit(name = 'verify')
+
+    
+    # Check the guild channels directly
+    if not verify_channel:
+        verify_channel = discord.utils.get(guild.text_channels, name='verify')
+
+    overwrites = {
+        guild.default_role: discord.PermissionOverwrite(send_messages=False),
+        guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
+    }
+
+    if verify_channel:
+        #Clear the channel if it already exists to ensure a clean slate for verification
+        async for message in verify_channel.history(limit=None):
+            await message.delete()
+            
+        await verify_channel.edit(overwrites=overwrites)
+        await engineer_channel.send("Found existing #verify channel. Using for verification.")
+    else:
+        verify_channel = await guild.create_text_channel('verify', overwrites=overwrites)
+        await engineer_channel.send("Created #verify channel.")
+
     await db.execute("UPDATE server_settings SET verify_channel_id = $1 WHERE guild_id = $2", verify_channel.id, guild.id)
-    await engineer_channel.send("Created #verify channel.")
 
 async def setup_guild(guild: discord.Guild):
     """
