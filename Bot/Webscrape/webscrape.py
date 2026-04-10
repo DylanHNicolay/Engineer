@@ -143,7 +143,7 @@ class webscrape(commands.Cog):
                 # if redirecting from Duo takes >= 30 seconds / user does not input Duo code
                 if x == 30:
                     await interaction.followup.send(f"While redirecting from DUO, threw error:\n ```Unable to redirect from DUO, stuck at {driver.current_url}```", ephemeral=True)
-                await asyncio.sleep(2)
+                await asyncio.sleep(1)
         await asyncio.sleep(2)
         print(driver.current_url)
 
@@ -153,8 +153,41 @@ class webscrape(commands.Cog):
             await interaction.followup.send(f"While redirecting from DUO, threw error:\n ```Bad redirect to {driver.current_url}```", ephemeral=True)
             return
 
-        view = dialogue.homeSelectView()
+        # club_list = driver.find_element(By.XPATH, "//div[@id='content']/div[@class='container']/div[@class='row']/div[@class='col-md-8']//ul[class='list-group']")
+        club_link_list = driver.find_elements(By.XPATH, "//a[contains(@href, '/organizations/view/')]")
+        club_list = {}
+
+        select = dialogue.homeSelectMenu()
+
+        print(club_link_list)
+        for obj in club_link_list:
+            if obj.text in club_list.keys():
+                continue
+            club_list[obj.text] = obj
+            select.options.append(discord.SelectOption(label=obj.text))
+        print(club_list)
+
+        view = dialogue.defaultView()
+        view.add_item(select)
         await interaction.followup.send(f"Welcome to a new session in the Club Management System! What would you like to do?", view=view, ephemeral=True)
+
+        await view.wait()
+        print(view.value)
+        
+        if view.value == "end":
+            driver.quit()
+            return
+        club_list[view.value].click()
+        current_club = view.value
+        view = None
+
+        while "organizations/view" not in driver.current_url and x in range(61):
+            await asyncio.sleep(0.5)
+
+        view = dialogue.homeSelectView()
+        await interaction.followup.send(f"Welcome to {current_club}. What would you like to do?", view=view, ephemeral=True)
+
+        await view.wait()
 
         driver.quit()
         print("Driver ended")

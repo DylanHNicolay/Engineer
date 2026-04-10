@@ -74,7 +74,7 @@ class ExitButton(discord.ui.Button):
             await self.view.on_cancel(interaction)
             view.stop()
 
-class homeSelectMenu(discord.ui.Select):
+class clubActionMenu(discord.ui.Select):
     def __init__(self):
         super().__init__(placeholder="Select An Option", 
             options = [
@@ -96,6 +96,34 @@ class homeSelectMenu(discord.ui.Select):
             await interaction.followup.send(select, ephemeral=True)
 
         await self.view.on_response(interaction)
+
+
+class homeSelectMenu(discord.ui.Select):
+    def __init__(self):
+        super().__init__(placeholder="Select An Option", 
+            options = [
+                discord.SelectOption(label="End Session", value="end")
+                discord.SelectOption(label="Back")
+            ])
+
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        view = self.view
+        select = self.values[0]
+        if hasattr(view, "author") and interaction.user != view.author:
+            return
+
+        if hasattr(view, "value"):
+            view.value = select
+            if select == "end":
+                self.value = False
+                if hasattr(self, "driver"):
+                    self.driver.quit()
+                    self.driver = None
+                self.quit()
+
+        await self.view.on_response(interaction)
+
 
 # --------------------- View Classes ---------------------------------
 
@@ -153,3 +181,14 @@ class homeSelectView(discord.ui.View):
         await interaction.edit_original_response(view=self)
         self.stop()
 
+
+class defaultView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=60)
+        self.value = None
+
+    async def on_response(self, interaction):
+        for obj in self.children:
+            self.disabled = True
+        await interaction.edit_original_response(view=self)
+        self.stop()
