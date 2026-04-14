@@ -29,6 +29,8 @@ class MyClient(commands.Bot):
         await self.load_extension("Webscrape.webscrape")
 
         await self.load_extension("SetUp.backfill")
+        await self.load_extension("year")
+                
 
         
         print("All extensions loaded.")
