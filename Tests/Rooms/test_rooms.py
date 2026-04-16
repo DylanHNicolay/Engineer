@@ -61,3 +61,35 @@ async def test_remove_slot_no_permission(cog):
     interaction.response.send_message.assert_awaited_once()
     msg = interaction.response.send_message.call_args[0][0]
     assert "permission" in msg.lower()
+
+
+# --- add_room ---
+
+@pytest.mark.asyncio
+async def test_add_room_already_exists(cog):
+    interaction = make_interaction()
+    _pass_admin_guard(cog, interaction)
+    with patch("Rooms.rooms.db.execute", new=AsyncMock(return_value=[{"room_id": 1}])):
+        await cog.add_room.callback(cog, interaction, name="Lab A", description="")
+    msg = interaction.followup.send.call_args[0][0]
+    assert "already exists" in msg.lower()
+
+
+@pytest.mark.asyncio
+async def test_add_room_success(cog):
+    interaction = make_interaction()
+    _pass_admin_guard(cog, interaction)
+    with patch("Rooms.rooms.db.execute", new=AsyncMock(side_effect=[[], None])):
+        await cog.add_room.callback(cog, interaction, name="Lab A", description="A room")
+    msg = interaction.followup.send.call_args[0][0]
+    assert "added" in msg.lower()
+
+
+@pytest.mark.asyncio
+async def test_add_room_db_error(cog):
+    interaction = make_interaction()
+    _pass_admin_guard(cog, interaction)
+    with patch("Rooms.rooms.db.execute", new=AsyncMock(side_effect=Exception("DB down"))):
+        await cog.add_room.callback(cog, interaction, name="Lab A", description="")
+    msg = interaction.followup.send.call_args[0][0]
+    assert "error" in msg.lower()
