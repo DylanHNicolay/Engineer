@@ -98,16 +98,13 @@ class clubActionMenu(discord.ui.Select):
         await self.view.on_response(interaction)
 
 
-class homeSelectMenu(discord.ui.Select):
+class defaultSelectMenu(discord.ui.Select):
     def __init__(self):
         super().__init__(placeholder="Select An Option", 
-            options = [
-                discord.SelectOption(label="End Session", value="end")
-                discord.SelectOption(label="Back")
-            ])
+            options = [])
 
     async def callback(self, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer()
         view = self.view
         select = self.values[0]
         if hasattr(view, "author") and interaction.user != view.author:
@@ -115,14 +112,11 @@ class homeSelectMenu(discord.ui.Select):
 
         if hasattr(view, "value"):
             view.value = select
-            if select == "end":
-                self.value = False
-                if hasattr(self, "driver"):
-                    self.driver.quit()
-                    self.driver = None
-                self.quit()
 
-        await self.view.on_response(interaction)
+        if hasattr(view, "on_response"):
+            await self.view.on_response(interaction)
+
+        view.stop() # for if on_response doesn't exist
 
 
 # --------------------- View Classes ---------------------------------
@@ -157,8 +151,8 @@ class CancelDriverView(discord.ui.View):
         self.driver = driver
         self.value = None
 
-        self.add_item(CancelButton())
         self.add_item(ContinueButton())
+        self.add_item(CancelButton())
 
     async def on_cancel(self, interaction):
         if self.driver:
@@ -166,19 +160,6 @@ class CancelDriverView(discord.ui.View):
             self.driver = None
         self.value = False
         await interaction.followup.send("Driver shut down", ephemeral=True)
-        self.stop()
-
-class homeSelectView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=60)
-        self.value = None
-
-        self.add_item(homeSelectMenu())
-
-    async def on_response(self, interaction):
-        for obj in self.children:
-            obj.disabled = True
-        await interaction.edit_original_response(view=self)
         self.stop()
 
 
@@ -189,6 +170,12 @@ class defaultView(discord.ui.View):
 
     async def on_response(self, interaction):
         for obj in self.children:
-            self.disabled = True
+            obj.disabled = True
+        await interaction.edit_original_response(view=self)
+        self.stop()
+
+    async def on_timeout(self, interaction):
+        for obj in self.children:
+            obj.disabled = True
         await interaction.edit_original_response(view=self)
         self.stop()

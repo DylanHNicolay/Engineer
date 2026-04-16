@@ -13,18 +13,10 @@ from getpass import getpass
 from . import dialogue
 
 
-# class dropdown(commands.Cog):
+class manage_clubs(commands.Cog):
 
-#     @app_commands.command(name="dropdown", description="testing dropdowns")
-#     async def dropdown(self, interaction: discord.Interaction):
-#         view = dialogue.testSelectView()
-#         await interaction.followup.send("Click it!", view=view, ephemeral=True)
-
-
-class webscrape(commands.Cog):
-
-    @app_commands.command(name="webscrape", description="Asynchronously access the Club Management System")
-    async def webscrape(self, interaction: discord.Interaction, rcsid:str, password:str):
+    @app_commands.command(name="manage_clubs", description="Asynchronously access CMS. WARNING: We can't currently guarantee the safety of your personal info.")
+    async def manage_clubs(self, interaction: discord.Interaction, rcsid:str, password:str):
         print("Running Command:", flush=True)
         await interaction.response.defer(ephemeral=True)
         view = dialogue.ConfirmView()
@@ -83,6 +75,9 @@ class webscrape(commands.Cog):
             username = rcsid
             username_input_obj.send_keys(username)
 
+            # note: this does not delete the data
+            del username
+
             # click login button to show password input
             login_button_obj = driver.find_element(By.XPATH, "//form/div/button")
             print(f"login_button_obj = {login_button_obj}")
@@ -95,6 +90,9 @@ class webscrape(commands.Cog):
             print(f"password_input_obj = {password_input_obj}")
             # password = getpass("Password: ")
             password_input_obj.send_keys(password)
+
+            # note: this does not delete the data
+            del password
 
             # re-get login button, login
             login_button_obj = driver.find_element(By.XPATH, "//form/div/button")
@@ -153,46 +151,74 @@ class webscrape(commands.Cog):
             await interaction.followup.send(f"While redirecting from DUO, threw error:\n ```Bad redirect to {driver.current_url}```", ephemeral=True)
             return
 
-        # club_list = driver.find_element(By.XPATH, "//div[@id='content']/div[@class='container']/div[@class='row']/div[@class='col-md-8']//ul[class='list-group']")
-        club_link_list = driver.find_elements(By.XPATH, "//a[contains(@href, '/organizations/view/')]")
-        club_list = {}
 
-        select = dialogue.homeSelectMenu()
+        value = ""
 
-        print(club_link_list)
-        for obj in club_link_list:
-            if obj.text in club_list.keys():
+        club_status_list = driver.find_elements(By.XPATH, "//li[class='list-group-item']")
+        for element in club_status_list:
+            print(f"||| {element.text} |||")
+
+
+        message = await interaction.followup.send(f"Welcome to a new session in the Club Management System! What would you like to do?", view=view, ephemeral=True)
+        location = ""
+        last_url = ""
+
+
+        while value != "end":
+
+            select = dialogue.defaultSelectMenu()
+            select.options.append(discord.SelectOption(label="End Session", value="end"))
+            if last_url != None:
+                select.options.append(discord.SelectOption(label="Back", value="back"))
+
+            if driver.current_url == "https://cms.union.rpi.edu/users/profile":
+                location = "home"
+                club_link_list = driver.find_elements(By.XPATH, "//a[contains(@href, '/organizations/view/')]")
+                club_list = {}
+                
+                for obj in club_link_list:
+                    if obj.text in club_list.keys():
+                        continue
+                    club_list[obj.text] = obj
+                    select.options.append(discord.SelectOption(label=obj.text))
+
+
+            elif "cms.union.rpi.edu/organizations/view" in driver.current_url:
+                location = driver.title.split(" | ")[0]
+                select.options.append(discord.SelectOption(label="Get Club Info", value="info"))
+                select.options.append(discord.SelectOption(label="Get Club Members", value="members"))
+            else:
+                select.placeholder = "An Error Has Occured"
+                location = "error"
+
+            view = dialogue.defaultView()
+            view.add_item(select)
+
+            await message.edit(content=f"You are at {location}. What would you like to do?", view=view)
+
+            await view.wait()
+            print(view.value)
+            value = view.value
+
+            if view.value == "end":
                 continue
-            club_list[obj.text] = obj
-            select.options.append(discord.SelectOption(label=obj.text))
-        print(club_list)
+            elif view.value == "back":
+                if last_url == None:
+                    continue
+                last_url = None
+                driver.back()
+            elif view.value in club_list:
+                last_url = driver.current_url
+                club_list[view.value].click()
+            else:
+                await interaction.followup.send(f"ERROR: That command is incomplete.", ephemeral=True)
 
-        view = dialogue.defaultView()
-        view.add_item(select)
-        await interaction.followup.send(f"Welcome to a new session in the Club Management System! What would you like to do?", view=view, ephemeral=True)
-
-        await view.wait()
-        print(view.value)
-        
-        if view.value == "end":
-            driver.quit()
-            return
-        club_list[view.value].click()
-        current_club = view.value
-        view = None
-
-        while "organizations/view" not in driver.current_url and x in range(61):
-            await asyncio.sleep(0.5)
-
-        view = dialogue.homeSelectView()
-        await interaction.followup.send(f"Welcome to {current_club}. What would you like to do?", view=view, ephemeral=True)
-
-        await view.wait()
+            await asyncio.sleep(3)
 
         driver.quit()
         print("Driver ended")
         await interaction.followup.send(f"Session ended.", ephemeral=True)
 
 async def setup(bot: commands.Bot):
-    await bot.add_cog(webscrape(bot))
+    await bot.add_cog(manage_clubs(bot))
     # await bot.add_cog(dropdown(bot))
