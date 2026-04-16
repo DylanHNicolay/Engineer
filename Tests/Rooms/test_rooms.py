@@ -93,3 +93,57 @@ async def test_add_room_db_error(cog):
         await cog.add_room.callback(cog, interaction, name="Lab A", description="")
     msg = interaction.followup.send.call_args[0][0]
     assert "error" in msg.lower()
+
+
+# --- add_slot ---
+
+@pytest.mark.asyncio
+async def test_add_slot_invalid_time_format(cog):
+    interaction = make_interaction()
+    _pass_admin_guard(cog, interaction)
+    await cog.add_slot.callback(cog, interaction, room_name="Lab A", start_time="not-a-date", end_time="also-not")
+    msg = interaction.followup.send.call_args[0][0]
+    assert "invalid" in msg.lower()
+
+
+@pytest.mark.asyncio
+async def test_add_slot_end_before_start(cog):
+    interaction = make_interaction()
+    _pass_admin_guard(cog, interaction)
+    await cog.add_slot.callback(cog, interaction, room_name="Lab A", start_time="2026-04-20 12:00", end_time="2026-04-20 10:00")
+    msg = interaction.followup.send.call_args[0][0]
+    assert "after" in msg.lower()
+
+
+@pytest.mark.asyncio
+async def test_add_slot_room_not_found(cog):
+    interaction = make_interaction()
+    _pass_admin_guard(cog, interaction)
+    with patch("Rooms.rooms.db.execute", new=AsyncMock(return_value=[])):
+        await cog.add_slot.callback(cog, interaction, room_name="Ghost Room", start_time="2026-04-20 10:00", end_time="2026-04-20 12:00")
+    msg = interaction.followup.send.call_args[0][0]
+    assert "not found" in msg.lower()
+
+
+@pytest.mark.asyncio
+async def test_add_slot_success(cog):
+    interaction = make_interaction()
+    _pass_admin_guard(cog, interaction)
+    with patch("Rooms.rooms.db.execute", new=AsyncMock(side_effect=[
+        [{"room_id": 1}],
+        [{"slot_id": 42}],
+    ])):
+        await cog.add_slot.callback(cog, interaction, room_name="Lab A", start_time="2026-04-20 10:00", end_time="2026-04-20 12:00")
+    msg = interaction.followup.send.call_args[0][0]
+    assert "#42" in msg
+    assert "lab a" in msg.lower()
+
+
+@pytest.mark.asyncio
+async def test_add_slot_db_error(cog):
+    interaction = make_interaction()
+    _pass_admin_guard(cog, interaction)
+    with patch("Rooms.rooms.db.execute", new=AsyncMock(side_effect=Exception("DB down"))):
+        await cog.add_slot.callback(cog, interaction, room_name="Lab A", start_time="2026-04-20 10:00", end_time="2026-04-20 12:00")
+    msg = interaction.followup.send.call_args[0][0]
+    assert "error" in msg.lower()
