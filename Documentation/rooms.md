@@ -89,3 +89,138 @@ Provides autocomplete suggestions for active team nicknames.
 
 **Returns:**
 - `List[app_commands.Choice[str]]`: Up to 25 matching team nicknames
+
+---
+
+## rooms.py
+
+Provides admin commands for managing rooms and available time slots.
+
+#### Overview
+
+This module lets admins define what rooms exist and when they are available for booking. Rooms are a simple registry; slots are time windows attached to a room that captains can later reserve. Deleting a slot automatically removes any reservation on it.
+
+#### Dependencies
+
+**External:**
+- `discord.py` - Discord bot API wrapper
+- `asyncpg` - Async PostgreSQL driver (via utils.db)
+
+**Internal:**
+- `utils.db` - Database connection manager
+- `Admin` cog - Permission verification
+
+#### Classes
+
+###### `Rooms(commands.Cog)`
+
+Discord cog for room and slot management.
+
+**Attributes:**
+- `bot` (commands.Bot): Reference to the Discord bot instance
+
+**Methods:**
+- `_is_admin()` - Internal admin permission check
+- `add_room()` - Command to register a new room
+- `add_slot()` - Command to add an available time slot
+- `remove_slot()` - Command to remove a time slot
+- `room_name_autocomplete()` - Autocomplete handler for room names
+
+#### Commands
+
+All commands are grouped under `/room` and require admin privileges.
+
+###### `/room add_room`
+
+Registers a new room that can have time slots assigned to it.
+
+**Parameters:**
+- `name` (str): Unique room name
+- `description` (str, optional): Description of the room
+
+**Behavior:**
+1. Checks the room doesn't already exist
+2. Inserts a new row into the rooms table
+
+**Example Usage:**
+```
+/room add_room name:Lab A description:Computer lab on floor 2
+```
+
+###### `/room add_slot`
+
+Adds an available time slot to a room.
+
+**Parameters:**
+- `room_name` (str): Name of the room (autocompleted)
+- `start_time` (str): Start time in `YYYY-MM-DD HH:MM` format
+- `end_time` (str): End time in `YYYY-MM-DD HH:MM` format
+
+**Behavior:**
+1. Parses and validates the time strings
+2. Ensures end time is after start time
+3. Looks up the room by name
+4. Inserts a new slot and returns its ID
+
+**Error Handling:**
+- Returns error if time strings are not valid ISO format
+- Returns error if end time is not after start time
+- Returns error if the room does not exist
+
+**Example Usage:**
+```
+/room add_slot room_name:Lab A start_time:2026-04-20 10:00 end_time:2026-04-20 12:00
+```
+
+###### `/room remove_slot`
+
+Removes a time slot. If the slot has a reservation, the reservation is deleted automatically via cascade.
+
+**Parameters:**
+- `slot_id` (int): ID of the slot to remove
+
+**Behavior:**
+1. Verifies the slot exists
+2. Deletes the slot (cascades to room_reservations)
+
+**Example Usage:**
+```
+/room remove_slot slot_id:42
+```
+
+#### Functions
+
+###### `_is_admin(self, interaction) -> bool`
+
+Checks if the interaction user has an admin role.
+
+**Parameters:**
+- `interaction` (discord.Interaction): Discord interaction object
+
+**Returns:**
+- `bool`: True if user is an admin, False otherwise
+
+###### `add_room(self, interaction, name, description)`
+
+**Database Operations:**
+- SELECT: Checks for existing room with same name
+- INSERT: Adds row to rooms table
+
+###### `add_slot(self, interaction, room_name, start_time, end_time)`
+
+**Database Operations:**
+- SELECT: Looks up room_id by room_name
+- INSERT: Adds row to room_slots, returns slot_id
+
+###### `remove_slot(self, interaction, slot_id)`
+
+**Database Operations:**
+- SELECT: Verifies slot exists
+- DELETE: Removes slot (cascades to room_reservations)
+
+###### `room_name_autocomplete(self, interaction, current)`
+
+Provides autocomplete suggestions for room names on the `add_slot` command.
+
+**Returns:**
+- `List[app_commands.Choice[str]]`: Up to 25 matching room names
