@@ -147,3 +147,56 @@ async def test_add_slot_db_error(cog):
         await cog.add_slot.callback(cog, interaction, room_name="Lab A", start_time="2026-04-20 10:00", end_time="2026-04-20 12:00")
     msg = interaction.followup.send.call_args[0][0]
     assert "error" in msg.lower()
+
+
+# --- remove_slot ---
+
+@pytest.mark.asyncio
+async def test_remove_slot_not_found(cog):
+    interaction = make_interaction()
+    _pass_admin_guard(cog, interaction)
+    with patch("Rooms.rooms.db.execute", new=AsyncMock(return_value=[])):
+        await cog.remove_slot.callback(cog, interaction, slot_id=99)
+    msg = interaction.followup.send.call_args[0][0]
+    assert "not found" in msg.lower()
+
+
+@pytest.mark.asyncio
+async def test_remove_slot_success(cog):
+    interaction = make_interaction()
+    _pass_admin_guard(cog, interaction)
+    with patch("Rooms.rooms.db.execute", new=AsyncMock(side_effect=[[{"slot_id": 5}], None])):
+        await cog.remove_slot.callback(cog, interaction, slot_id=5)
+    msg = interaction.followup.send.call_args[0][0]
+    assert "removed" in msg.lower()
+
+
+@pytest.mark.asyncio
+async def test_remove_slot_db_error(cog):
+    interaction = make_interaction()
+    _pass_admin_guard(cog, interaction)
+    with patch("Rooms.rooms.db.execute", new=AsyncMock(side_effect=Exception("DB down"))):
+        await cog.remove_slot.callback(cog, interaction, slot_id=5)
+    msg = interaction.followup.send.call_args[0][0]
+    assert "error" in msg.lower()
+
+
+# --- autocomplete ---
+
+@pytest.mark.asyncio
+async def test_room_name_autocomplete_returns_choices(cog):
+    interaction = MagicMock()
+    fake_records = [{"room_name": "Lab A"}, {"room_name": "Lab B"}]
+    with patch("Rooms.rooms.db.execute", new=AsyncMock(return_value=fake_records)):
+        choices = await cog.room_name_autocomplete(interaction, "lab")
+    assert len(choices) == 2
+    assert choices[0].name == "Lab A"
+    assert choices[1].name == "Lab B"
+
+
+@pytest.mark.asyncio
+async def test_room_name_autocomplete_empty(cog):
+    interaction = MagicMock()
+    with patch("Rooms.rooms.db.execute", new=AsyncMock(return_value=[])):
+        choices = await cog.room_name_autocomplete(interaction, "zzz")
+    assert choices == []
