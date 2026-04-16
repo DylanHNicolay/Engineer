@@ -89,3 +89,60 @@ async def test_reserve_db_error(cog):
             await cog.reserve.callback(cog, interaction, slot_id=1)
     msg = interaction.followup.send.call_args[0][0]
     assert "error" in msg.lower()
+
+
+# --- cancel_reservation ---
+
+@pytest.mark.asyncio
+async def test_cancel_not_captain(cog):
+    interaction = make_interaction()
+    with patch.object(cog, "_get_captain_team", new=AsyncMock(return_value=None)):
+        await cog.cancel_reservation.callback(cog, interaction, slot_id=1)
+    msg = interaction.followup.send.call_args[0][0]
+    assert "captain" in msg.lower()
+
+
+@pytest.mark.asyncio
+async def test_cancel_no_reservation(cog):
+    interaction = make_interaction()
+    fake_team = {"team_id": 10, "team_nick": "Dragons"}
+    with patch.object(cog, "_get_captain_team", new=AsyncMock(return_value=fake_team)):
+        with patch("Rooms.reservations.db.execute", new=AsyncMock(return_value=[])):
+            await cog.cancel_reservation.callback(cog, interaction, slot_id=1)
+    msg = interaction.followup.send.call_args[0][0]
+    assert "no reservation" in msg.lower()
+
+
+@pytest.mark.asyncio
+async def test_cancel_wrong_team(cog):
+    interaction = make_interaction()
+    fake_team = {"team_id": 10, "team_nick": "Dragons"}
+    fake_reservation = [{"reservation_id": 3, "team_id": 99}]
+    with patch.object(cog, "_get_captain_team", new=AsyncMock(return_value=fake_team)):
+        with patch("Rooms.reservations.db.execute", new=AsyncMock(return_value=fake_reservation)):
+            await cog.cancel_reservation.callback(cog, interaction, slot_id=1)
+    msg = interaction.followup.send.call_args[0][0]
+    assert "own team" in msg.lower()
+
+
+@pytest.mark.asyncio
+async def test_cancel_success(cog):
+    interaction = make_interaction()
+    fake_team = {"team_id": 10, "team_nick": "Dragons"}
+    fake_reservation = [{"reservation_id": 3, "team_id": 10}]
+    with patch.object(cog, "_get_captain_team", new=AsyncMock(return_value=fake_team)):
+        with patch("Rooms.reservations.db.execute", new=AsyncMock(side_effect=[fake_reservation, None])):
+            await cog.cancel_reservation.callback(cog, interaction, slot_id=1)
+    msg = interaction.followup.send.call_args[0][0]
+    assert "cancelled" in msg.lower()
+
+
+@pytest.mark.asyncio
+async def test_cancel_db_error(cog):
+    interaction = make_interaction()
+    fake_team = {"team_id": 10, "team_nick": "Dragons"}
+    with patch.object(cog, "_get_captain_team", new=AsyncMock(return_value=fake_team)):
+        with patch("Rooms.reservations.db.execute", new=AsyncMock(side_effect=Exception("DB down"))):
+            await cog.cancel_reservation.callback(cog, interaction, slot_id=1)
+    msg = interaction.followup.send.call_args[0][0]
+    assert "error" in msg.lower()
