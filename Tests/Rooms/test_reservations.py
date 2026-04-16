@@ -146,3 +146,62 @@ async def test_cancel_db_error(cog):
             await cog.cancel_reservation.callback(cog, interaction, slot_id=1)
     msg = interaction.followup.send.call_args[0][0]
     assert "error" in msg.lower()
+
+
+# --- list_rooms ---
+
+@pytest.mark.asyncio
+async def test_list_rooms_no_slots(cog):
+    interaction = make_interaction()
+    with patch("Rooms.reservations.db.execute", new=AsyncMock(return_value=[])):
+        await cog.list_rooms.callback(cog, interaction, room_name="")
+    msg = interaction.followup.send.call_args[0][0]
+    assert "no available slots" in msg.lower()
+
+
+@pytest.mark.asyncio
+async def test_list_rooms_no_slots_filtered(cog):
+    interaction = make_interaction()
+    with patch("Rooms.reservations.db.execute", new=AsyncMock(return_value=[])):
+        await cog.list_rooms.callback(cog, interaction, room_name="Lab A")
+    msg = interaction.followup.send.call_args[0][0]
+    assert "lab a" in msg.lower()
+
+
+@pytest.mark.asyncio
+async def test_list_rooms_with_slots(cog):
+    interaction = make_interaction()
+    with patch("Rooms.reservations.db.execute", new=AsyncMock(return_value=[make_fake_slot()])):
+        await cog.list_rooms.callback(cog, interaction, room_name="")
+    msg = interaction.followup.send.call_args[0][0]
+    assert "available room slots" in msg.lower()
+    assert "lab a" in msg.lower()
+
+
+@pytest.mark.asyncio
+async def test_list_rooms_db_error(cog):
+    interaction = make_interaction()
+    with patch("Rooms.reservations.db.execute", new=AsyncMock(side_effect=Exception("DB down"))):
+        await cog.list_rooms.callback(cog, interaction, room_name="")
+    msg = interaction.followup.send.call_args[0][0]
+    assert "error" in msg.lower()
+
+
+# --- autocomplete ---
+
+@pytest.mark.asyncio
+async def test_list_rooms_autocomplete_returns_choices(cog):
+    interaction = MagicMock()
+    fake_records = [{"room_name": "Lab A"}, {"room_name": "Lab B"}]
+    with patch("Rooms.reservations.db.execute", new=AsyncMock(return_value=fake_records)):
+        choices = await cog.room_name_autocomplete(interaction, "lab")
+    assert len(choices) == 2
+    assert choices[0].name == "Lab A"
+
+
+@pytest.mark.asyncio
+async def test_list_rooms_autocomplete_empty(cog):
+    interaction = MagicMock()
+    with patch("Rooms.reservations.db.execute", new=AsyncMock(return_value=[])):
+        choices = await cog.room_name_autocomplete(interaction, "zzz")
+    assert choices == []
