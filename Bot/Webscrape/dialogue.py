@@ -174,8 +174,7 @@ class defaultView(discord.ui.View):
         await interaction.edit_original_response(view=self)
         self.stop()
 
-    async def on_timeout(self, interaction):
+    async def on_timeout(self):
         for obj in self.children:
             obj.disabled = True
-        await interaction.edit_original_response(view=self)
         self.stop()
