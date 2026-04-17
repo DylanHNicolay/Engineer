@@ -174,6 +174,7 @@ class manage_clubs(commands.Cog):
         while value != "end":
 
             select = dialogue.defaultSelectMenu()
+            club_list = {}
             select.options.append(discord.SelectOption(label="End Session", value="end"))
             if last_url != None:
                 select.options.append(discord.SelectOption(label="Back", value="back"))
@@ -181,7 +182,6 @@ class manage_clubs(commands.Cog):
             if driver.current_url == "https://cms.union.rpi.edu/users/profile":
                 location = "home"
                 club_link_list = driver.find_elements(By.XPATH, "//a[contains(@href, '/organizations/view/')]")
-                club_list = {}
                 
                 for obj in club_link_list:
                     if obj.text in club_list.keys():
