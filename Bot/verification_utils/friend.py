@@ -5,8 +5,16 @@ from utils.user_init import add_user
 from .friend_confirmation_view import FriendConfirmationView
 from utils.role_utils import handle_role_change
 
+
+async def _send_ephemeral_error(interaction: discord.Interaction, message: str):
+    if interaction.response.is_done():
+        await interaction.followup.send(message, ephemeral=True)
+    else:
+        await interaction.response.send_message(message, ephemeral=True)
+
 async def start_friend_verification(interaction: discord.Interaction):
     """Initiates the friend verification process with confirmation from the friend."""
+    user_dm_channel = None
     try:
         user_dm_channel = await interaction.user.create_dm()
         await interaction.response.send_message("I've sent you a DM to begin the friend verification process.", ephemeral=True)
@@ -78,9 +86,24 @@ async def start_friend_verification(interaction: discord.Interaction):
             return
 
     except asyncio.TimeoutError:
-        await user_dm_channel.send("You took too long to respond. The verification process has expired. Please try again.")
+        if user_dm_channel:
+            await user_dm_channel.send("You took too long to respond. The verification process has expired. Please try again.")
+        else:
+            await _send_ephemeral_error(
+                interaction,
+                "The verification process timed out before a DM channel was established. Please try again.",
+            )
     except discord.errors.Forbidden:
-        await interaction.followup.send("I couldn't send you a DM to start the process. Please check your privacy settings.", ephemeral=True)
+        await _send_ephemeral_error(
+            interaction,
+            "I couldn't send you a DM to start the process. Please check your privacy settings.",
+        )
     except Exception as e:
         print(f"Error in friend verification: {e}")
-        await user_dm_channel.send("An unexpected error occurred. Please contact an administrator.")
+        if user_dm_channel:
+            await user_dm_channel.send("An unexpected error occurred. Please contact an administrator.")
+        else:
+            await _send_ephemeral_error(
+                interaction,
+                "An unexpected error occurred. Please contact an administrator.",
+            )

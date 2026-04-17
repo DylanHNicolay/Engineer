@@ -9,6 +9,13 @@ from utils.db import db
 from utils.email import email_sender
 from utils.role_utils import handle_role_change
 
+
+async def _send_ephemeral_error(interaction: discord.Interaction, message: str):
+    if interaction.response.is_done():
+        await interaction.followup.send(message, ephemeral=True)
+    else:
+        await interaction.response.send_message(message, ephemeral=True)
+
 async def scan_file_local(attachment: discord.Attachment):
     """Scans a file using the local clamscan command-line tool."""
     try:
@@ -42,6 +49,7 @@ async def scan_file_local(attachment: discord.Attachment):
 
 async def start_alumni_verification(interaction: discord.Interaction):
     """Initiates the alumni verification process in DMs."""
+    dm_channel = None
     try:
         await interaction.response.send_message("I've sent you a DM to begin the alumni verification process.", ephemeral=True)
         dm_channel = await interaction.user.create_dm()
@@ -159,15 +167,30 @@ async def start_alumni_verification(interaction: discord.Interaction):
         await engineer_channel.send(f"Admins: Please review the submission. If it is valid, grant the Alumni role to {interaction.user.mention}. If not, remove the Verified role.")
 
     except asyncio.TimeoutError:
-        await dm_channel.send("You took too long to respond. The verification process has expired. Please try again.")
+        if dm_channel:
+            await dm_channel.send("You took too long to respond. The verification process has expired. Please try again.")
+        else:
+            await _send_ephemeral_error(
+                interaction,
+                "The verification process timed out before a DM channel was established. Please try again.",
+            )
     except discord.errors.Forbidden:
         error_message = ("The bot encountered a permissions error. This could be because it cannot create DMs, or because its role "
                          "is not high enough in the server's role hierarchy to assign the 'Verified' role. Please check your "
                          "privacy settings and ask an administrator to check the bot's role position.")
-        try:
+        if dm_channel:
             await dm_channel.send(error_message)
-        except (discord.errors.Forbidden, NameError):
-            await interaction.followup.send("I couldn't send you a DM to start the process. Please check your privacy settings and allow DMs from server members.", ephemeral=True)
+        else:
+            await _send_ephemeral_error(
+                interaction,
+                "I couldn't send you a DM to start the process. Please check your privacy settings and allow DMs from server members.",
+            )
     except Exception as e:
         print(f"Error in alumni verification: {e}")
-        await dm_channel.send("An unexpected error occurred. Please contact an administrator.")
+        if dm_channel:
+            await dm_channel.send("An unexpected error occurred. Please contact an administrator.")
+        else:
+            await _send_ephemeral_error(
+                interaction,
+                "An unexpected error occurred. Please contact an administrator.",
+            )

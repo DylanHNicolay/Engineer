@@ -8,8 +8,16 @@ from utils.email import email_sender
 from utils.user_init import add_user
 from utils.role_utils import handle_role_change
 
+
+async def _send_ephemeral_error(interaction: discord.Interaction, message: str):
+    if interaction.response.is_done():
+        await interaction.followup.send(message, ephemeral=True)
+    else:
+        await interaction.response.send_message(message, ephemeral=True)
+
 async def start_student_verification(interaction: discord.Interaction):
     """Initiates the student verification process in DMs."""
+    dm_channel = None
     try:
         await interaction.response.send_message("I've sent you a DM to begin the student verification process.", ephemeral=True)
         dm_channel = await interaction.user.create_dm()
@@ -90,17 +98,30 @@ async def start_student_verification(interaction: discord.Interaction):
         await dm_channel.send(f"You have been granted the {student_role.name} role and your previous status roles have been removed. Welcome!")
 
     except asyncio.TimeoutError:
-        await dm_channel.send("You took too long to respond. The verification process has expired. Please try again.")
+        if dm_channel:
+            await dm_channel.send("You took too long to respond. The verification process has expired. Please try again.")
+        else:
+            await _send_ephemeral_error(
+                interaction,
+                "The verification process timed out before a DM channel was established. Please try again.",
+            )
     except discord.errors.Forbidden:
         # This error is now smarter. It checks if a DM has already been established.
         error_message = ("The bot encountered a permissions error. This is most likely because its role is not high enough "
                          "in the server's role hierarchy to assign the 'Student' role. Please ask an administrator to move the bot's role up.")
-        try:
-            # If the DM is open, send the error there where the user is looking.
+        if dm_channel:
             await dm_channel.send(error_message)
-        except (discord.errors.Forbidden, NameError):
-            # If we couldn't even open the DM, send it as a followup.
-            await interaction.followup.send("I couldn't send you a DM to start the process. Please check your privacy settings and allow DMs from server members.", ephemeral=True)
+        else:
+            await _send_ephemeral_error(
+                interaction,
+                "I couldn't send you a DM to start the process. Please check your privacy settings and allow DMs from server members.",
+            )
     except Exception as e:
         print(f"Error in student verification: {e}")
-        await dm_channel.send("An unexpected error occurred. Please contact an administrator.")
+        if dm_channel:
+            await dm_channel.send("An unexpected error occurred. Please contact an administrator.")
+        else:
+            await _send_ephemeral_error(
+                interaction,
+                "An unexpected error occurred. Please contact an administrator.",
+            )
