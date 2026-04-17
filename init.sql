@@ -52,3 +52,23 @@ CREATE TABLE server_settings (
     verify_channel_id BIGINT,
     engineer_channel_id BIGINT
 );
+
+CREATE TABLE rooms (
+    room_id     SERIAL PRIMARY KEY,
+    room_name   VARCHAR(100) UNIQUE NOT NULL,
+    description VARCHAR(255)
+);
+
+CREATE TABLE room_slots (
+    slot_id    SERIAL PRIMARY KEY,
+    room_id    INT REFERENCES rooms(room_id) ON DELETE CASCADE,
+    start_time TIMESTAMPTZ NOT NULL,
+    end_time   TIMESTAMPTZ NOT NULL,
+    CHECK (end_time > start_time)
+);
+
+CREATE TABLE room_reservations (
+    reservation_id SERIAL PRIMARY KEY,
+    slot_id        INT UNIQUE REFERENCES room_slots(slot_id) ON DELETE CASCADE,
+    team_id        INT REFERENCES teams(team_id) ON DELETE CASCADE
+);
