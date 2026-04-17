@@ -132,16 +132,23 @@ class manage_clubs(commands.Cog):
 
 
         # wait to be redirected from duo
-        while "duo" in driver.current_url and x in range(31):
+        for redirect_wait_seconds in range(31):
+            if "duo" not in driver.current_url:
+                break
+
             try:
                 # try to continue redirect
                 dont_trust_button = driver.find_element(By.ID, "dont-trust-browser-button")
                 dont_trust_button.click()
-            except:
+            except Exception:
                 # if redirecting from Duo takes >= 30 seconds / user does not input Duo code
-                if x == 30:
-                    await interaction.followup.send(f"While redirecting from DUO, threw error:\n ```Unable to redirect from DUO, stuck at {driver.current_url}```", ephemeral=True)
-                await asyncio.sleep(1)
+                if redirect_wait_seconds == 30:
+                    await interaction.followup.send(
+                        f"While redirecting from DUO, threw error:\n ```Unable to redirect from DUO, stuck at {driver.current_url}```",
+                        ephemeral=True,
+                    )
+                    return
+            await asyncio.sleep(1)
         await asyncio.sleep(2)
         print(driver.current_url)
 
