@@ -3,6 +3,7 @@ from discord import app_commands
 from discord.ext import commands
 from utils.db import db
 from utils.role_utils import handle_role_change
+from Admin.admin import Admin
 
 class Year(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -14,6 +15,16 @@ class Year(commands.Cog):
         Admin command logic to update student years, graduate students, and clean up the database.
         """
 
+        admin_cog = self.bot.get_cog("Admin")
+        if (
+            not isinstance(admin_cog, Admin)
+            or not await admin_cog.is_admin(interaction.user)
+        ):
+            await interaction.response.send_message(
+                "You do not have permission to use this command.", ephemeral=True
+            )
+            return
+        
         await interaction.response.defer(ephemeral=True)
 
         guild = interaction.guild  

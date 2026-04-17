@@ -1,5 +1,6 @@
 import discord
 from utils.db import db
+from utils.verification import post_verification_message
 
 async def _init_guild_db(guild: discord.Guild):
     """Initializes the guild in the database."""
@@ -11,6 +12,8 @@ async def _create_initial_engineer_channel(guild: discord.Guild):
     engineer_channel = None
     if settings_records and settings_records[0]['engineer_channel_id']:
         engineer_channel = guild.get_channel(settings_records[0]['engineer_channel_id'])
+        if engineer_channel:
+            await engineer_channel.edit(name='engineer')
     
     if not engineer_channel:
         engineer_channel = discord.utils.get(guild.text_channels, name='engineer')
@@ -63,7 +66,6 @@ async def _setup_roles(guild: discord.Guild, log_channel: discord.TextChannel):
 
 async def _update_engineer_channel_perms(engineer_channel: discord.TextChannel, role_objects: dict):
     """Updates the engineer channel with permissions for leadership roles."""
-    guild = engineer_channel.guild
     co_president_role = role_objects.get('Co-President')
     representative_role = role_objects.get('Representative')
 
@@ -77,6 +79,56 @@ async def _update_engineer_channel_perms(engineer_channel: discord.TextChannel, 
     await engineer_channel.edit(overwrites=overwrites)
     await engineer_channel.send("Channel permissions have been updated for leadership roles.")
 
+async def _create_verify_channel(guild: discord.Guild, engineer_channel: discord.TextChannel):
+    """Creates or finds the verfiy channel."""
+    settings_records = await db.execute("SELECT verify_channel_id FROM server_settings WHERE guild_id = $1", guild.id)
+    verify_channel = None
+
+    # Check if verify channel exists, if not create it
+    if settings_records and settings_records[0]['verify_channel_id']:
+        verify_channel = guild.get_channel(settings_records[0]['verify_channel_id'])
+        if verify_channel:
+            await verify_channel.edit(name='verify')
+
+    
+    # Check the guild channels directly
+    if not verify_channel:
+        verify_channel = discord.utils.get(guild.text_channels, name='verify')
+
+    overwrites = {
+        guild.default_role: discord.PermissionOverwrite(send_messages=False),
+        guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
+    }
+
+    if verify_channel:
+        #Clear the channel if it already exists to ensure a clean slate for verification
+        async for message in verify_channel.history(limit=None):
+            await message.delete()
+            
+        await verify_channel.edit(overwrites=overwrites)
+        await engineer_channel.send("Found existing #verify channel. Using for verification.")
+    else:
+        verify_channel = await guild.create_text_channel('verify', overwrites=overwrites)
+        await engineer_channel.send("Created #verify channel.")
+
+    await db.execute("UPDATE server_settings SET verify_channel_id = $1 WHERE guild_id = $2", verify_channel.id, guild.id)
+    return verify_channel
+
+async def _update_verify_channel_perms(verify_channel: discord.TextChannel, role_objects: dict):
+    """Updates the verify channel with permissions for leadership roles."""
+    co_president_role = role_objects.get('Co-President')
+    representative_role = role_objects.get('Representative')
+
+    overwrites = verify_channel.overwrites
+    
+    if co_president_role:
+        overwrites[co_president_role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
+    if representative_role:
+        overwrites[representative_role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
+    
+    await verify_channel.edit(overwrites=overwrites)
+    await verify_channel.send("Channel permissions have been updated for leadership roles.")
+
 async def setup_guild(guild: discord.Guild):
     """
     Sets up the server when the bot joins by calling modular setup functions.
@@ -87,5 +139,13 @@ async def setup_guild(guild: discord.Guild):
     
     role_objects = await _setup_roles(guild, engineer_channel)
     await _update_engineer_channel_perms(engineer_channel, role_objects)
+    
+    verify_channel = await _create_verify_channel(guild, engineer_channel)
+    await _update_verify_channel_perms(verify_channel, role_objects)
+
+    await engineer_channel.send("Initial role and channel setup is complete. Run the `/backfill` command to populate the database with existing members. Please ensure that the bot is above the roles you want to backfill.")
+
+    await post_verification_message(guild)
+    await engineer_channel.send("Posted initial verification message.")
     
     await engineer_channel.send("Server setup complete.")
